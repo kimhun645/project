@@ -1,0 +1,180 @@
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+
+/* Fix for modal input click issues */
+.dialog-content input,
+.dialog-content textarea,
+.dialog-content select,
+.dialog-content .select-trigger {
+  position: relative !important;
+  z-index: 30 !important;
+  cursor: text !important;
+}
+
+.dialog-content .select-trigger {
+  cursor: pointer !important;
+}
+
+.dialog-content .select-content {
+  position: relative !important;
+  z-index: 50 !important;
+}
+
+/* Ensure form elements are clickable */
+.dialog-content form {
+  position: relative !important;
+  z-index: 20 !important;
+}
+
+.dialog-content label {
+  position: relative !important;
+  z-index: 25 !important;
+  cursor: pointer !important;
+}
+
+/* Fix background decoration z-index */
+.dialog-content .bg-decoration {
+  position: absolute !important;
+  z-index: -10 !important;
+  pointer-events: none !important;
+}
+
+/* Modal positioning fixes - ใช้ flexbox สำหรับการจัดตำแหน่ง */
+[data-radix-dialog-content] {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 1rem !important;
+  z-index: 1000 !important;
+}
+
+/* Modal content styling */
+[data-radix-dialog-content] > div {
+  position: relative !important;
+  max-width: 600px !important;
+  width: 100% !important;
+  max-height: 90vh !important;
+  overflow-y: auto !important;
+  background: white !important;
+  border-radius: 12px !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Responsive modal */
+@media (max-width: 640px) {
+  [data-radix-dialog-content] > div {
+    width: 95% !important;
+    max-height: 95vh !important;
+    margin: 0.5rem !important;
+  }
+}
+
+/* Ensure modal is above everything */
+[data-radix-dialog-content] * {
+  position: relative !important;
+}
+
+/* Fix for backdrop */
+.dialog-content::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: -1;
+}
+
+/* Additional modal positioning fixes */
+.fixed.inset-0.flex.items-center.justify-center {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 1000 !important;
+}
+
+/* Ensure modal content is centered */
+.fixed.inset-0.flex.items-center.justify-center > div {
+  position: relative !important;
+  z-index: 10 !important;
+}
+
+/* Category modal specific fixes */
+.fixed.inset-0.flex.items-center.justify-center .bg-gradient-card {
+  position: relative !important;
+  z-index: 10 !important;
+  max-width: 425px !important;
+  width: 100% !important;
+  max-height: 90vh !important;
+  overflow-y: auto !important;
+}
+
+/* Responsive category modal */
+@media (max-width: 640px) {
+  .fixed.inset-0.flex.items-center.justify-center .bg-gradient-card {
+    max-width: 95% !important;
+    margin: 0.5rem !important;
+    max-height: 95vh !important;
+  }
+}
+
+/* Ensure backdrop is visible */
+.fixed.inset-0.flex.items-center.justify-center .bg-black\/50 {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  z-index: 0 !important;
+}
