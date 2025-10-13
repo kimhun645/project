@@ -42,7 +42,8 @@ const ApprovalHistory: React.FC = () => {
   const fetchAllRequests = async () => {
     try {
       setIsLoading(true);
-      const requests = await api.getBudgetRequests();
+      const { firestoreService } = await import('@/lib/firestoreService');
+      const requests = await firestoreService.getBudgetRequests();
       // Ensure requests is always an array
       setAllRequests(Array.isArray(requests) ? requests : []);
     } catch (err) {

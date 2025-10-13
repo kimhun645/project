@@ -17,7 +17,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Plus, Loader2, CalendarIcon, X, Package, Tag, Building2, MapPin, DollarSign, BarChart3, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { api } from '@/lib/apiService';
+import { firestoreService } from '@/lib/firestoreService';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
@@ -97,8 +97,8 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
   const fetchCategoriesAndSuppliers = async () => {
     try {
       const [categoriesResult, suppliersResult] = await Promise.all([
-              api.getCategories(),
-      api.getSuppliers()
+        firestoreService.getCategories(),
+        firestoreService.getSuppliers()
       ]);
 
       setCategories(categoriesResult || []);
@@ -122,7 +122,7 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
 
   const generateSKU = async () => {
     try {
-      const products = await api.getProducts();
+      const products = await firestoreService.getProducts();
       
       let nextNum = 1;
       if (products && products.length > 0) {
@@ -143,7 +143,7 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
   const checkBarcodeExists = async (barcode: string) => {
     if (!barcode) return false;
     
-    const product = await api.getProductByBarcode(barcode);
+    const product = await firestoreService.getProductByBarcode(barcode);
     return !!product;
   };
 
@@ -247,7 +247,7 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
       }
 
       // Check if SKU already exists
-      const products = await api.getProducts();
+      const products = await firestoreService.getProducts();
       const existingSKU = products.find(p => p.sku === sku);
       
       if (existingSKU) {
@@ -261,7 +261,7 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
       }
 
       // Insert new product
-              await api.createProduct({
+      await firestoreService.createProduct({
         name: formData.name,
         sku: sku,
         barcode: formData.barcode || undefined,

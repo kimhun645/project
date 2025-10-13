@@ -28,7 +28,7 @@ import {
   MessageSquare
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { api, Movement } from '@/lib/apiService';
+import { firestoreService, Movement } from '@/lib/firestoreService';
 
 interface ProductForMovement {
   id: string;
@@ -95,7 +95,7 @@ export function EditMovementDialog({ movement, open, onOpenChange, onMovementUpd
 
   const fetchProducts = async () => {
     try {
-      const data = await api.getProducts();
+      const data = await firestoreService.getProducts();
       setProducts(data || []);
     } catch (error) {
       console.error('Error fetching products:', error);
@@ -142,7 +142,7 @@ export function EditMovementDialog({ movement, open, onOpenChange, onMovementUpd
 
     try {
       // Get current product stock
-      const product = await api.getProductById(formData.product_id);
+      const product = await firestoreService.getProductById(formData.product_id);
       if (!product) throw new Error('ไม่พบสินค้า');
 
       // Calculate stock difference
@@ -162,7 +162,7 @@ export function EditMovementDialog({ movement, open, onOpenChange, onMovementUpd
       }
 
       // Update movement record
-      await api.updateMovement(movement.id, {
+      await firestoreService.updateMovement(movement.id, {
         product_id: formData.product_id,
         type: formData.type,
         quantity: quantity,
@@ -172,7 +172,7 @@ export function EditMovementDialog({ movement, open, onOpenChange, onMovementUpd
       });
 
       // Update product stock
-      await api.updateProduct(formData.product_id, {
+      await firestoreService.updateProduct(formData.product_id, {
         current_stock: newStock
       });
 

@@ -100,7 +100,8 @@ export function EditSupplierDialog({ supplier, open, onOpenChange, onSupplierUpd
     setIsLoading(true);
 
     try {
-      await api.updateSupplier(supplier.id, {
+      const { firestoreService } = await import('@/lib/firestoreService');
+      await firestoreService.updateSupplier(supplier.id, {
         name: formData.name.trim(),
         contact_person: formData.contact_person.trim() || undefined,
         email: formData.email.trim() || undefined,

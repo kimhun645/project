@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>สร้างคำขอใช้งบประมาณทดสอบ</title>
+    <style>
+        body {
+            font-family: 'Sarabun', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2563eb;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .button {
+            background: #2563eb;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+            display: inline-block;
+            text-decoration: none;
+        }
+        .button:hover {
+            background: #1d4ed8;
+        }
+        .success {
+            background: #10b981;
+        }
+        .warning {
+            background: #f59e0b;
+        }
+        .info {
+            background: #6b7280;
+            color: white;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        .code-block {
+            background: #f3f4f6;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 สร้างคำขอใช้งบประมาณทดสอบ</h1>
+        
+        <div class="info">
+            <strong>📋 ข้อมูลทดสอบที่จะสร้าง:</strong><br>
+            • คำขอใช้งบประมาณ 3 รายการ<br>
+            • สถานะ: PENDING (รอการอนุมัติ)<br>
+            • จำนวนเงิน: 1,000 - 5,000 บาท<br>
+            • รหัสบัญชี: 53010200, 53010300, 53010400
+        </div>
+
+        <button class="button" onclick="createTestData()">
+            🚀 สร้างข้อมูลทดสอบ
+        </button>
+
+        <button class="button warning" onclick="checkExistingData()">
+            🔍 ตรวจสอบข้อมูลที่มีอยู่
+        </button>
+
+        <button class="button success" onclick="goToApprovalPage()">
+            📋 ไปที่หน้า Approval
+        </button>
+
+        <div id="result" style="margin-top: 20px;"></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, addDoc, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyBqQZqQZqQZqQZqQZqQZqQZqQZqQZqQZqQ",
+            authDomain: "stock-6e930.firebaseapp.com",
+            projectId: "stock-6e930",
+            storageBucket: "stock-6e930.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "1:123456789:web:abcdef123456"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        window.createTestData = async function() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div style="color: #f59e0b;">⏳ กำลังสร้างข้อมูลทดสอบ...</div>';
+
+            try {
+                const testRequests = [
+                    {
+                        request_no: 'BR-2024-001',
+                        requester: 'นายสมชาย ใจดี',
+                        request_date: '2024-01-15',
+                        account_code: '53010200',
+                        account_name: 'ค่าไฟฟ้า',
+                        amount: 1500,
+                        note: 'ค่าไฟฟ้าสำนักงานเดือนมกราคม',
+                        material_list: [
+                            { name: 'ค่าไฟฟ้า', quantity: '1', unit: 'เดือน' }
+                        ],
+                        status: 'PENDING',
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    },
+                    {
+                        request_no: 'BR-2024-002',
+                        requester: 'นางสมหญิง รักดี',
+                        request_date: '2024-01-16',
+                        account_code: '53010300',
+                        account_name: 'ค่าน้ำประปา',
+                        amount: 2500,
+                        note: 'ค่าน้ำประปาสำนักงานเดือนมกราคม',
+                        material_list: [
+                            { name: 'ค่าน้ำประปา', quantity: '1', unit: 'เดือน' }
+                        ],
+                        status: 'PENDING',
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    },
+                    {
+                        request_no: 'BR-2024-003',
+                        requester: 'นายสมศักดิ์ ดีใจ',
+                        request_date: '2024-01-17',
+                        account_code: '53010400',
+                        account_name: 'ค่าโทรศัพท์',
+                        amount: 3000,
+                        note: 'ค่าโทรศัพท์สำนักงานเดือนมกราคม',
+                        material_list: [
+                            { name: 'ค่าโทรศัพท์', quantity: '1', unit: 'เดือน' }
+                        ],
+                        status: 'PENDING',
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    }
+                ];
+
+                const budgetRequestsRef = collection(db, 'budgetRequests');
+                const results = [];
+
+                for (const request of testRequests) {
+                    const docRef = await addDoc(budgetRequestsRef, request);
+                    results.push({ id: docRef.id, ...request });
+                }
+
+                resultDiv.innerHTML = `
+                    <div style="color: #10b981; background: #f0fdf4; padding: 15px; border-radius: 6px; margin: 10px 0;">
+                        <strong>✅ สร้างข้อมูลทดสอบสำเร็จ!</strong><br>
+                        จำนวน: ${results.length} รายการ<br>
+                        <div class="code-block">${JSON.stringify(results, null, 2)}</div>
+                    </div>
+                `;
+
+            } catch (error) {
+                console.error('Error creating test data:', error);
+                resultDiv.innerHTML = `
+                    <div style="color: #ef4444; background: #fef2f2; padding: 15px; border-radius: 6px; margin: 10px 0;">
+                        <strong>❌ เกิดข้อผิดพลาด:</strong><br>
+                        ${error.message}
+                    </div>
+                `;
+            }
+        };
+
+        window.checkExistingData = async function() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div style="color: #f59e0b;">⏳ กำลังตรวจสอบข้อมูล...</div>';
+
+            try {
+                const budgetRequestsRef = collection(db, 'budgetRequests');
+                const querySnapshot = await getDocs(budgetRequestsRef);
+                
+                const requests = querySnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+
+                resultDiv.innerHTML = `
+                    <div style="color: #10b981; background: #f0fdf4; padding: 15px; border-radius: 6px; margin: 10px 0;">
+                        <strong>📊 ข้อมูลที่มีอยู่:</strong><br>
+                        จำนวน: ${requests.length} รายการ<br>
+                        <div class="code-block">${JSON.stringify(requests, null, 2)}</div>
+                    </div>
+                `;
+
+            } catch (error) {
+                console.error('Error checking data:', error);
+                resultDiv.innerHTML = `
+                    <div style="color: #ef4444; background: #fef2f2; padding: 15px; border-radius: 6px; margin: 10px 0;">
+                        <strong>❌ เกิดข้อผิดพลาด:</strong><br>
+                        ${error.message}
+                    </div>
+                `;
+            }
+        };
+
+        window.goToApprovalPage = function() {
+            window.open('https://stock-6e930.web.app/approval', '_blank');
+        };
+    </script>
+</body>
+</html>

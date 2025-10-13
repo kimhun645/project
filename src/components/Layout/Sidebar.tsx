@@ -138,7 +138,12 @@ export function Sidebar({ onLogout }: SidebarProps) {
                   <p className="text-sm font-medium text-white drop-shadow-sm">
                     {user?.displayName || user?.email || 'ผู้ดูแลระบบ'}
                   </p>
-                  <p className="text-xs text-white/80">{user?.role === 'admin' ? 'ผู้ดูแลระบบ' : 'ผู้จัดการสต็อก'}</p>
+                  <p className="text-xs text-white/80">
+                    {user?.role === 'admin' ? 'ผู้ดูแลระบบ' : 
+                     user?.role === 'manager' ? 'ผู้จัดการศูนย์' : 
+                     user?.role === 'staff' ? 'เจ้าหน้าที่' : 
+                     'ผู้ใช้งาน'}
+                  </p>
                 </div>
               </div>
               <button

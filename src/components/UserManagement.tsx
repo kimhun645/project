@@ -12,6 +12,7 @@ import { Plus, FileEdit as Edit, Trash2, User as UserIcon, Shield, Crown, Mail, 
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { userService, User, CreateUserData, UpdateUserData, UserRole } from '@/lib/userService';
+import { firestoreService } from '@/lib/firestoreService';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 
@@ -30,6 +31,8 @@ export function UserManagement({ currentUserRole }: UserManagementProps) {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
 
   const [createForm, setCreateForm] = useState<CreateUserData>({
     email: '',
@@ -58,15 +61,27 @@ export function UserManagement({ currentUserRole }: UserManagementProps) {
   };
 
   useEffect(() => {
+    console.log('🚀 useEffect เริ่มต้น');
     fetchUsers();
   }, []);
 
+  useEffect(() => {
+    console.log('🔄 users state เปลี่ยน:', users.length, 'ผู้ใช้');
+  }, [users]);
+
   const fetchUsers = async () => {
     try {
+      console.log('🔄 เริ่มต้น fetchUsers');
       setIsLoading(true);
-      const usersData = await userService.getUsers();
+      console.log('🔍 กำลังดึงข้อมูลผู้ใช้ด้วย firestoreService...');
+      const usersData = await firestoreService.getUsers();
+      console.log('✅ ดึงข้อมูลผู้ใช้สำเร็จ:', usersData);
+      console.log('📊 จำนวนผู้ใช้ที่ได้:', usersData.length);
       setUsers(usersData);
+      console.log('✅ setUsers เรียบร้อย');
+      console.log('🔍 ตรวจสอบ users state ใหม่:', usersData);
     } catch (error: any) {
+      console.error('❌ ข้อผิดพลาดในการดึงข้อมูลผู้ใช้:', error);
       toast({
         title: "เกิดข้อผิดพลาด",
         description: error.message,
@@ -74,6 +89,7 @@ export function UserManagement({ currentUserRole }: UserManagementProps) {
       });
     } finally {
       setIsLoading(false);
+      console.log('✅ fetchUsers เสร็จสิ้น');
     }
   };
 
@@ -131,24 +147,62 @@ export function UserManagement({ currentUserRole }: UserManagementProps) {
     }
   };
 
-  const handleDeleteUser = async () => {
-    if (!deletingUser) return;
+  const handleDeleteUser = async (userToDelete?: User) => {
+    const targetUser = userToDelete || deletingUser;
+    console.log('🔍 handleDeleteUser ถูกเรียกด้วย:', { userToDelete, deletingUser, targetUser });
+    
+    if (!targetUser) {
+      console.log('❌ ไม่มี targetUser');
+      return;
+    }
+
+    // ตรวจสอบการยืนยัน
+    const expectedConfirmation = 'delete';
+    if (deleteConfirmation !== expectedConfirmation) {
+      toast({
+        title: "การยืนยันไม่ถูกต้อง",
+        description: `กรุณาพิมพ์ "${expectedConfirmation}" เพื่อยืนยันการลบ`,
+        variant: "destructive",
+      });
+      return;
+    }
 
     try {
-      await userService.deleteUser(deletingUser.id);
+      console.log('🗑️ กำลังลบผู้ใช้ด้วย firestoreService:', targetUser.id, targetUser.displayName);
+      console.log('🔍 ตรวจสอบ targetUser object:', targetUser);
+      console.log('🔍 ตรวจสอบ firestoreService:', firestoreService);
+      
+      await firestoreService.deleteUser(targetUser.id);
+      console.log('✅ ลบผู้ใช้สำเร็จ');
+      
       toast({
         title: "ลบผู้ใช้เรียบร้อย",
-        description: `ลบผู้ใช้ ${deletingUser.displayName} เรียบร้อยแล้ว`,
+        description: `ลบผู้ใช้ ${targetUser.displayName} เรียบร้อยแล้ว`,
       });
       
+      console.log('🔍 กำลังปิด dialog และล้าง state');
       setDeletingUser(null);
+      setShowDeleteDialog(false);
+      setDeleteConfirmation('');
+      console.log('🔍 กำลัง refresh ข้อมูลผู้ใช้');
       fetchUsers();
+      console.log('✅ การลบเสร็จสิ้น');
     } catch (error: any) {
+      console.error('❌ ข้อผิดพลาดในการลบผู้ใช้:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        code: error.code,
+        stack: error.stack
+      });
       toast({
         title: "เกิดข้อผิดพลาด",
         description: error.message,
         variant: "destructive",
       });
+      console.log('🔍 กำลังปิด dialog เนื่องจาก error');
+      setDeletingUser(null);
+      setShowDeleteDialog(false);
+      setDeleteConfirmation('');
     }
   };
 
@@ -394,9 +448,24 @@ export function UserManagement({ currentUserRole }: UserManagementProps) {
                       </Button>
                     )}
                     {hasPermission('users:delete') && (
-                      <AlertDialog>
+                      <AlertDialog open={showDeleteDialog && deletingUser?.id === user.id} onOpenChange={(open) => {
+                        if (!open) {
+                          setShowDeleteDialog(false);
+                          setDeletingUser(null);
+                        }
+                      }}>
                         <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="sm">
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => {
+                              console.log('🔍 ปุ่มลบถูกคลิก');
+                              console.log('🔍 User ที่จะลบ:', user);
+                              setDeletingUser(user);
+                              setShowDeleteDialog(true);
+                              console.log('🔍 Dialog ถูกเปิด');
+                            }}
+                          >
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </AlertDialogTrigger>
@@ -407,14 +476,39 @@ export function UserManagement({ currentUserRole }: UserManagementProps) {
                               คุณแน่ใจหรือไม่ที่จะลบผู้ใช้ {user.displayName}? การดำเนินการนี้ไม่สามารถย้อนกลับได้
                             </AlertDialogDescription>
                           </AlertDialogHeader>
+                          <div className="py-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="deleteConfirmation" className="text-sm font-medium">
+                                พิมพ์ <span className="font-bold text-red-600">delete</span> เพื่อยืนยันการลบ
+                              </Label>
+                              <Input
+                                id="deleteConfirmation"
+                                value={deleteConfirmation}
+                                onChange={(e) => setDeleteConfirmation(e.target.value)}
+                                placeholder="delete"
+                                className="w-full"
+                              />
+                            </div>
+                          </div>
                           <AlertDialogFooter>
-                            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+                            <AlertDialogCancel 
+                              onClick={() => {
+                                setDeleteConfirmation('');
+                                setDeletingUser(null);
+                                setShowDeleteDialog(false);
+                              }}
+                            >
+                              ยกเลิก
+                            </AlertDialogCancel>
                             <AlertDialogAction
                               onClick={() => {
-                                setDeletingUser(user);
-                                handleDeleteUser();
+                                console.log('🔍 AlertDialogAction ถูกคลิก');
+                                console.log('🔍 User ที่จะลบ:', user);
+                                console.log('🔍 การยืนยัน:', deleteConfirmation);
+                                handleDeleteUser(user);
                               }}
                               className="bg-red-600 hover:bg-red-700"
+                              disabled={deleteConfirmation !== 'delete'}
                             >
                               ลบ
                             </AlertDialogAction>

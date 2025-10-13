@@ -309,9 +309,29 @@ export function ProductsStyleStatsCards({ cards, stats }: StatsCardsProps) {
         hoverShadow: 'hover:shadow-green-500/20',
         percentageColor: 'text-green-500',
         percentageBg: 'bg-green-50'
+      },
+      blue: {
+        gradient: 'from-blue-500/10 via-cyan-500/5',
+        circle1: 'from-blue-400/30 to-cyan-400/30',
+        circle2: 'from-blue-300/20 to-cyan-300/20',
+        iconBg: 'from-blue-500 to-cyan-600',
+        iconShadow: 'shadow-blue-500/30',
+        hoverShadow: 'hover:shadow-blue-500/20',
+        percentageColor: 'text-blue-500',
+        percentageBg: 'bg-blue-50'
+      },
+      yellow: {
+        gradient: 'from-yellow-500/10 via-amber-500/5',
+        circle1: 'from-yellow-400/30 to-amber-400/30',
+        circle2: 'from-yellow-300/20 to-amber-300/20',
+        iconBg: 'from-yellow-500 to-amber-600',
+        iconShadow: 'shadow-yellow-500/30',
+        hoverShadow: 'hover:shadow-yellow-500/20',
+        percentageColor: 'text-yellow-500',
+        percentageBg: 'bg-yellow-50'
       }
     };
-    return styles[color];
+    return styles[color] || styles.purple; // Fallback to purple if color not found
   };
 
   return (

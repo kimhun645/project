@@ -26,7 +26,7 @@ const ApprovalLogin: React.FC = () => {
   // Check if coming from email link
   const requestId = searchParams.get('request_id');
   const decision = searchParams.get('decision');
-  const isFromEmail = requestId && decision;
+  const isFromEmail = requestId; // ไม่ต้องมี decision ก็ได้
 
   const handleRequestAccess = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,9 +79,12 @@ const ApprovalLogin: React.FC = () => {
   };
 
   const handleDirectAccess = () => {
-    if (isFromEmail) {
-      // Direct access from email link
+    if (isFromEmail && requestId) {
+      // Direct access from email link - go to specific approval request
       navigate(`/approval/${requestId}`);
+    } else {
+      // Go to general approval page
+      navigate('/approval');
     }
   };
 
@@ -195,6 +198,19 @@ const ApprovalLogin: React.FC = () => {
                       </>
                     )}
                   </Button>
+
+                  {/* Direct Access Button for Email Links */}
+                  {isFromEmail && (
+                    <Button
+                      type="button"
+                      onClick={handleDirectAccess}
+                      variant="outline"
+                      className="w-full mt-3 border-green-500 text-green-600 hover:bg-green-50 hover:border-green-600"
+                    >
+                      <ArrowRight className="h-4 w-4 mr-2" />
+                      เข้าสู่ระบบโดยตรง (สำหรับผู้อนุมัติ)
+                    </Button>
+                  )}
                 </form>
               )}
 

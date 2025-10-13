@@ -39,6 +39,36 @@ export interface Category {
   id: string;
   name: string;
   description?: string;
+  is_medicine?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AccountCode {
+  id: string;
+  code?: string;
+  name: string;
+  type?: string;
+  created_at?: any;
+  updated_at?: any;
+}
+
+export interface User {
+  id: string;
+  email: string;
+  displayName: string;
+  role: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt?: string;
+  createdBy?: string;
+}
+
+export interface AccountCode {
+  id: string;
+  code: string;
+  name: string;
   created_at: string;
   updated_at: string;
 }
@@ -70,15 +100,21 @@ export interface Movement {
 
 export interface BudgetRequest {
   id: string;
-  request_number: string;
-  title: string;
-  description?: string;
+  request_no: string;
+  requester: string;
+  request_date: string;
+  account_code: string;
+  account_name?: string;
   amount: number;
-  status: 'pending' | 'approved' | 'rejected';
-  requested_by: string;
-  requested_at: string;
+  note?: string;
+  material_list?: any[];
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
   created_at: string;
   updated_at: string;
+  approved_at?: string;
+  approver_name?: string;
+  approver_id?: string;
+  approver_email?: string;
 }
 
 export interface Approval {
@@ -253,6 +289,7 @@ export class FirestoreService {
           id: doc.id,
           name: data.name || '',
           description: data.description,
+          is_medicine: data.is_medicine || false,
           created_at: toISOString(data.created_at),
           updated_at: toISOString(data.updated_at)
         } as Category;
@@ -263,20 +300,109 @@ export class FirestoreService {
     }
   }
 
+  static async getUsers(): Promise<User[]> {
+    try {
+      console.log('🔍 กำลังดึงข้อมูลผู้ใช้จาก Firestore...');
+      const usersRef = collection(db, 'users');
+      const snapshot = await getDocs(usersRef);
+
+      console.log('📄 จำนวนผู้ใช้ที่พบ:', snapshot.docs.length);
+
+      const users = snapshot.docs.map(doc => {
+        const data = doc.data();
+        const user = {
+          id: doc.id,
+          email: data.email || '',
+          displayName: data.displayName || '',
+          role: data.role || 'user',
+          isActive: data.isActive !== false,
+          createdAt: toISOString(data.createdAt),
+          updatedAt: toISOString(data.updatedAt),
+          lastLoginAt: data.lastLoginAt ? toISOString(data.lastLoginAt) : undefined,
+          createdBy: data.createdBy
+        } as User;
+        
+        console.log('👤 ผู้ใช้:', user);
+        return user;
+      });
+
+      console.log('✅ ส่งคืนข้อมูลผู้ใช้:', users);
+      return users;
+    } catch (error) {
+      console.error('❌ ข้อผิดพลาดในการดึงข้อมูลผู้ใช้:', error);
+      return [];
+    }
+  }
+
+  static async deleteUser(userId: string): Promise<void> {
+    try {
+      console.log('🗑️ กำลังลบผู้ใช้จาก Firestore ด้วย firestoreService:', userId);
+      console.log('🔍 ตรวจสอบ userId:', userId);
+      console.log('🔍 ตรวจสอบ db instance:', db);
+      
+      const userDocRef = doc(db, 'users', userId);
+      console.log('🔍 ตรวจสอบ userDocRef:', userDocRef);
+      
+      await deleteDoc(userDocRef);
+      console.log('✅ ลบผู้ใช้จาก Firestore สำเร็จ');
+    } catch (error: any) {
+      console.error('❌ ข้อผิดพลาดในการลบผู้ใช้จาก Firestore:', error);
+      console.error('❌ Error code:', error.code);
+      console.error('❌ Error message:', error.message);
+      throw new Error(`ไม่สามารถลบผู้ใช้ได้: ${error.message}`);
+    }
+  }
+
+
+  static async createBudgetRequest(requestData: any): Promise<any> {
+    try {
+      console.log('🔍 กำลังสร้างคำขอใช้งบประมาณใน Firestore...');
+      const budgetRequestsRef = collection(db, 'budgetRequests');
+      const now = new Date().toISOString();
+      
+      const requestDoc = {
+        ...requestData,
+        status: 'PENDING',
+        created_at: now,
+        updated_at: now
+      };
+      
+      const docRef = await addDoc(budgetRequestsRef, requestDoc);
+      console.log('✅ สร้างคำขอใช้งบประมาณสำเร็จ:', docRef.id);
+      
+      return {
+        id: docRef.id,
+        ...requestDoc
+      };
+    } catch (error) {
+      console.error('❌ ข้อผิดพลาดในการสร้างคำขอใช้งบประมาณ:', error);
+      throw error;
+    }
+  }
+
   static async createCategory(category: Omit<Category, 'id' | 'created_at' | 'updated_at'>): Promise<Category> {
     try {
       const categoriesRef = collection(db, 'categories');
-      const docRef = await addDoc(categoriesRef, {
-        ...category,
-        created_at: serverTimestamp(),
-        updated_at: serverTimestamp()
-      });
+      const now = new Date().toISOString();
+      
+      // Filter out undefined values
+      const categoryData = {
+        name: category.name,
+        description: category.description,
+        is_medicine: category.is_medicine || false,
+        created_at: now,
+        updated_at: now
+      };
+      
+      const docRef = await addDoc(categoriesRef, categoryData);
 
       const newCategory = {
         id: docRef.id,
-        ...category,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        name: categoryData.name,
+        description: categoryData.description,
+        is_medicine: categoryData.is_medicine,
+        created_at: now,
+        updated_at: now
       };
 
       return newCategory;
@@ -289,10 +415,17 @@ export class FirestoreService {
   static async updateCategory(id: string, category: Partial<Category>): Promise<void> {
     try {
       const docRef = doc(db, 'categories', id);
-      await updateDoc(docRef, {
-        ...category,
-        updated_at: serverTimestamp()
-      });
+      
+      // Filter out undefined values
+      const updateData: any = {
+        updated_at: new Date().toISOString()
+      };
+      
+      if (category.name !== undefined) updateData.name = category.name;
+      if (category.description !== undefined) updateData.description = category.description;
+      if (category.is_medicine !== undefined) updateData.is_medicine = category.is_medicine;
+      
+      await updateDoc(docRef, updateData);
     } catch (error) {
       console.error('Error updating category:', error);
       throw error;
@@ -432,26 +565,117 @@ export class FirestoreService {
 
   static async getBudgetRequests(): Promise<BudgetRequest[]> {
     try {
-      const querySnapshot = await getDocs(collection(db, 'budget_requests'));
-      return querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        created_at: toISOString(doc.data().created_at),
-        updated_at: toISOString(doc.data().updated_at),
-        requested_at: toISOString(doc.data().requested_at)
-      } as BudgetRequest));
+      console.log('🔍 กำลังดึงข้อมูลคำขอใช้งบประมาณจาก Firestore...');
+      
+      // ตรวจสอบว่า db connection ทำงานหรือไม่
+      if (!db) {
+        throw new Error('Firestore database not initialized');
+      }
+      
+      const querySnapshot = await getDocs(collection(db, 'budgetRequests'));
+      console.log('📄 จำนวนคำขอที่พบ:', querySnapshot.docs.length);
+      
+      const requests = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        console.log('🔍 ข้อมูลดิบจาก Firestore:', data);
+        console.log('🔍 request_no:', data.request_no);
+        console.log('🔍 requester:', data.requester);
+        console.log('🔍 amount:', data.amount);
+        console.log('🔍 status:', data.status);
+        
+        const request = {
+          id: doc.id,
+          ...data,
+          created_at: toISOString(data.created_at),
+          updated_at: toISOString(data.updated_at),
+          requested_at: data.requested_at ? toISOString(data.requested_at) : undefined
+        } as BudgetRequest;
+        
+        console.log('💰 คำขอใช้งบประมาณที่ประมวลผลแล้ว:', request);
+        console.log('💰 request.request_no:', request.request_no);
+        return request;
+      });
+      
+      console.log('✅ ส่งคืนข้อมูลคำขอใช้งบประมาณ:', requests);
+      return requests;
     } catch (error) {
-      console.error('Error fetching budget requests:', error);
+      console.error('❌ ข้อผิดพลาดในการดึงข้อมูลคำขอใช้งบประมาณ:', error);
+      console.error('❌ Error type:', typeof error);
+      console.error('❌ Error message:', error instanceof Error ? error.message : 'Unknown error');
+      console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+      
+      // Return empty array instead of throwing to prevent 400 errors
+      return [];
+    }
+  }
+
+  static async getBudgetRequest(id: string): Promise<BudgetRequest | null> {
+    try {
+      console.log('🔍 กำลังดึงข้อมูลคำขอใช้งบประมาณ ID:', id);
+      
+      if (!db) {
+        throw new Error('Firestore database not initialized');
+      }
+      
+      const docRef = doc(db, 'budgetRequests', id);
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const request = {
+          id: docSnap.id,
+          ...data,
+          created_at: toISOString(data.created_at),
+          updated_at: toISOString(data.updated_at),
+          requested_at: data.requested_at ? toISOString(data.requested_at) : undefined
+        } as BudgetRequest;
+        
+        console.log('✅ พบข้อมูลคำขอใช้งบประมาณ:', request);
+        return request;
+      } else {
+        console.warn('⚠️ ไม่พบข้อมูลคำขอใช้งบประมาณ ID:', id);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ ข้อผิดพลาดในการดึงข้อมูลคำขอใช้งบประมาณ:', error);
+      throw error;
+    }
+  }
+
+  static async updateBudgetRequestStatus(id: string, status: 'PENDING' | 'APPROVED' | 'REJECTED', approverName?: string): Promise<void> {
+    try {
+      console.log('🔍 กำลังอัพเดทสถานะคำขอใช้งบประมาณ ID:', id, 'สถานะ:', status);
+      
+      if (!db) {
+        throw new Error('Firestore database not initialized');
+      }
+      
+      const docRef = doc(db, 'budgetRequests', id);
+      const updateData: any = {
+        status: status,
+        updated_at: new Date().toISOString()
+      };
+      
+      if (status === 'APPROVED' || status === 'REJECTED') {
+        updateData.approved_at = new Date().toISOString();
+        updateData.approver_name = approverName || 'ผู้อนุมัติ';
+      }
+      
+      await updateDoc(docRef, updateData);
+      
+      console.log('✅ อัพเดทสถานะคำขอใช้งบประมาณสำเร็จ:', id, 'สถานะ:', status);
+    } catch (error) {
+      console.error('❌ ข้อผิดพลาดในการอัพเดทสถานะคำขอใช้งบประมาณ:', error);
       throw error;
     }
   }
 
   static async updateBudgetRequest(id: string, updates: Partial<BudgetRequest>): Promise<void> {
     try {
-      const docRef = doc(db, 'budget_requests', id);
+      const docRef = doc(db, 'budgetRequests', id);
       await updateDoc(docRef, {
         ...updates,
-        updated_at: serverTimestamp()
+        updated_at: new Date().toISOString()
       });
     } catch (error) {
       console.error('Error updating budget request:', error);
@@ -461,7 +685,7 @@ export class FirestoreService {
 
   static async deleteBudgetRequest(id: string): Promise<void> {
     try {
-      await deleteDoc(doc(db, 'budget_requests', id));
+      await deleteDoc(doc(db, 'budgetRequests', id));
     } catch (error) {
       console.error('Error deleting budget request:', error);
       throw error;
@@ -533,6 +757,60 @@ export class FirestoreService {
       }
     } catch (error) {
       console.error('Error saving settings:', error);
+      throw error;
+    }
+  }
+
+  // Account Codes Management
+  static async getAccountCodes(): Promise<AccountCode[]> {
+    try {
+      const accountCodesRef = collection(db, 'accountCodes');
+      const querySnapshot = await getDocs(accountCodesRef);
+      
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as AccountCode));
+    } catch (error) {
+      console.error('Error getting account codes:', error);
+      throw error;
+    }
+  }
+
+  static async addAccountCode(accountCode: Omit<AccountCode, 'id'>): Promise<string> {
+    try {
+      const accountCodesRef = collection(db, 'accountCodes');
+      const docRef = await addDoc(accountCodesRef, {
+        ...accountCode,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      });
+      return docRef.id;
+    } catch (error) {
+      console.error('Error adding account code:', error);
+      throw error;
+    }
+  }
+
+  static async updateAccountCode(id: string, accountCode: Partial<AccountCode>): Promise<void> {
+    try {
+      const accountCodeRef = doc(db, 'accountCodes', id);
+      await updateDoc(accountCodeRef, {
+        ...accountCode,
+        updated_at: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error updating account code:', error);
+      throw error;
+    }
+  }
+
+  static async deleteAccountCode(id: string): Promise<void> {
+    try {
+      const accountCodeRef = doc(db, 'accountCodes', id);
+      await deleteDoc(accountCodeRef);
+    } catch (error) {
+      console.error('Error deleting account code:', error);
       throw error;
     }
   }

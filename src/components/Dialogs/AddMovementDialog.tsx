@@ -30,7 +30,7 @@ import {
   BarChart3
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { api } from '@/lib/apiService';
+import { firestoreService } from '@/lib/firestoreService';
 
 interface ProductForMovement {
   id: string;
@@ -88,7 +88,7 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
 
   const fetchProducts = async () => {
     try {
-      const data = await api.getProducts();
+      const data = await firestoreService.getProducts();
       setProducts(data || []);
     } catch (error) {
       console.error('Error fetching products:', error);
@@ -126,7 +126,7 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
 
     try {
       // Get current product stock
-      const product = await api.getProductById(formData.product_id);
+      const product = await firestoreService.getProductById(formData.product_id);
       if (!product) throw new Error('ไม่พบสินค้า');
 
       // Check if stock out is possible
@@ -141,7 +141,7 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
       }
 
       // Add movement record
-      await api.createMovement({
+      await firestoreService.createMovement({
         product_id: formData.product_id,
         type: formData.type,
         quantity: quantity,
@@ -155,7 +155,7 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
         ? (product.current_stock || 0) + quantity
         : (product.current_stock || 0) - quantity;
 
-      await api.updateProduct(formData.product_id, {
+      await firestoreService.updateProduct(formData.product_id, {
         current_stock: newStock
       });
 

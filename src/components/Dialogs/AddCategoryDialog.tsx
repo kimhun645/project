@@ -26,7 +26,6 @@ import {
   Pill
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { api } from '@/lib/apiService';
 
 interface AddCategoryDialogProps {
   onCategoryAdded?: () => void;
@@ -74,12 +73,22 @@ export function AddCategoryDialog({ onCategoryAdded }: AddCategoryDialogProps) {
       return;
     }
 
+    if (!formData.description.trim()) {
+      toast({
+        title: "กรุณากรอกข้อมูลให้ครบถ้วน",
+        description: "กรุณาระบุคำอธิบายหมวดหมู่",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      await api.createCategory({
+      const { firestoreService } = await import('@/lib/firestoreService');
+      await firestoreService.createCategory({
         name: formData.name.trim(),
-        description: formData.description.trim() || undefined,
+        description: formData.description.trim(),
         is_medicine: formData.is_medicine
       });
 
@@ -193,6 +202,7 @@ export function AddCategoryDialog({ onCategoryAdded }: AddCategoryDialogProps) {
                 value={formData.description}
                 onChange={(e) => updateFormData('description', e.target.value)}
                 placeholder="กรอกคำอธิบายเพิ่มเติมเกี่ยวกับหมวดหมู่นี้"
+                required
                 className="min-h-[60px] text-sm border-2 border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 bg-white hover:bg-slate-50 transition-all duration-200 shadow-sm hover:shadow-md rounded-lg resize-none"
               />
             </div>

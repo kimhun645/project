@@ -258,12 +258,6 @@ export function ProductsStyleDataTable({
                       </div>
                     </TableHead>
                   ))}
-                  <TableHead className="text-sm font-semibold py-3 text-purple-700 pr-6">
-                    <div className="flex items-center gap-2">
-                      <MoreVertical className="h-4 w-4 text-purple-500" />
-                      <span>การจัดการ</span>
-                    </div>
-                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -304,43 +298,9 @@ export function ProductsStyleDataTable({
                         </TableCell>
                         {visibleColumns.map((column) => (
                           <TableCell key={column.key} className="font-bold text-base sm:text-lg py-4">
-                            {column.render && item ? column.render(item[column.key], item) : (item ? item[column.key] : '-')}
+                            {column.render && item ? column.render(item, item) : (item ? item[column.key] : '-')}
                           </TableCell>
                         ))}
-                        <TableCell className="py-4 pr-6">
-                          <div className="flex items-center justify-end space-x-2">
-                            {onEdit && (
-                              <Button 
-                                variant="ghost" 
-                                size="sm"
-                                onClick={() => onEdit(item)}
-                                className="group relative h-10 w-10 hover:bg-purple-50 hover:text-purple-600 transition-all duration-300 hover:scale-110 transform rounded-xl border border-transparent hover:border-purple-200"
-                                title="แก้ไข"
-                              >
-                                <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-indigo-500/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                                <Edit className="relative h-4 w-4 group-hover:scale-110 transition-transform duration-300" />
-                              </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="group relative text-destructive hover:text-destructive h-10 w-10 hover:bg-red-50 transition-all duration-300 hover:scale-110 transform rounded-xl border border-transparent hover:border-red-200"
-                              onClick={() => onDelete(item)}
-                              title="ลบ"
-                            >
-                              <div className="absolute inset-0 bg-gradient-to-br from-red-500/10 to-pink-500/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                              <Trash2 className="relative h-4 w-4 group-hover:scale-110 transition-transform duration-300" />
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              className="group relative h-10 w-10 hover:bg-gray-50 hover:text-gray-600 transition-all duration-300 hover:scale-110 transform rounded-xl border border-transparent hover:border-gray-200"
-                              title="ตัวเลือกเพิ่มเติม"
-                            >
-                              <MoreVertical className="relative h-4 w-4 group-hover:scale-110 transition-transform duration-300" />
-                            </Button>
-                          </div>
-                        </TableCell>
                       </TableRow>
                     );
                   })
@@ -565,14 +525,17 @@ export function ProductsStyleDataTable({
                       </div>
                       
                       <div className="space-y-2">
-                        {visibleColumns.slice(0, 3).map((column) => (
-                          <div key={column.key} className="flex items-center justify-between">
-                            <span className="text-sm text-gray-600">{column.title}:</span>
-                            <span className="text-sm font-medium">
-                              {column.render && item ? column.render(item[column.key], item) : (item ? item[column.key] : '-')}
-                            </span>
-                          </div>
-                        ))}
+                        {visibleColumns.slice(0, 3).map((column) => {
+                          const renderedValue = column.render ? column.render(item, item) : (item ? item[column.key] : '-');
+                          return (
+                            <div key={column.key} className="flex items-center justify-between">
+                              <span className="text-sm text-gray-600">{column.title}:</span>
+                              <span className="text-sm font-medium">
+                                {renderedValue}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                       
                       <div className="flex items-center justify-between pt-2 border-t border-gray-100">

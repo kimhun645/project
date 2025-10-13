@@ -93,9 +93,9 @@ const ApprovalVerify: React.FC = () => {
         text: 'รหัสเข้าถึงถูกต้อง กำลังเข้าสู่ระบบ...' 
       });
       
-      // Navigate to approval list after successful verification
+      // Navigate to approval page after successful verification
       setTimeout(() => {
-        navigate('/approval/list');
+        navigate('/approval');
       }, 2000);
       
     } catch (error) {

@@ -1,5 +1,5 @@
 // Test Email Service
-const fetch = require('node-fetch');
+import fetch from 'node-fetch';
 
 const EMAIL_SERVICE_URL = 'https://stock-scribe-backend-601202807478.asia-southeast1.run.app';
 

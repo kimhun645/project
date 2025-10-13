@@ -172,13 +172,6 @@ export const movementsService = {
   }
 };
 
-// Account Codes Service
-export const accountCodesService = {
-  async getAll(): Promise<AccountCode[]> {
-    const result = await pool.query('SELECT * FROM account_codes ORDER BY code');
-    return result.rows;
-  }
-};
 
 // Budget Requests Service
 export const budgetRequestsService = {

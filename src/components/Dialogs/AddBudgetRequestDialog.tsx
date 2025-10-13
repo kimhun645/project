@@ -22,8 +22,10 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { api, type AccountCode, type BudgetRequest as DBBudgetRequest, type Requester } from '@/lib/apiService';
+import { api, type BudgetRequest as DBBudgetRequest, type Requester } from '@/lib/apiService';
+import { type AccountCode } from '@/lib/firestoreService';
 import { emailService, type EmailData } from '@/lib/emailService';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface MaterialItem {
   product_id?: string;
@@ -72,10 +74,11 @@ interface AddBudgetRequestDialogProps {
 
 export function AddBudgetRequestDialog({ onSuccess, editRequest }: AddBudgetRequestDialogProps) {
   const { toast } = useToast();
+  const { currentUser } = useAuth();
   const today = new Date().toISOString().split('T')[0];
   
   const [formData, setFormData] = useState<BudgetRequestForm>({
-    requester: editRequest?.requester || '',
+    requester: editRequest?.requester || currentUser?.displayName || '',
     request_date: editRequest?.request_date || today,
     account_code: editRequest?.account_code || '',
     amount: editRequest?.amount?.toString() || '',
@@ -103,7 +106,8 @@ export function AddBudgetRequestDialog({ onSuccess, editRequest }: AddBudgetRequ
   const loadRequesters = async () => {
     try {
       setIsLoadingRequesters(true);
-      const data = await api.getRequesters();
+      const { firestoreService } = await import('@/lib/firestoreService');
+      const data = await firestoreService.getRequesters();
       // Ensure data is always an array
       setRequesters(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -118,8 +122,57 @@ export function AddBudgetRequestDialog({ onSuccess, editRequest }: AddBudgetRequ
   const loadApprovers = async () => {
     try {
       setIsLoadingApprovers(true);
-      const data = await api.getApprovers();
-      setApprovers(data || []);
+      const { firestoreService } = await import('@/lib/firestoreService');
+      // ใช้ getUsers แทน getApprovers เพื่อดึงข้อมูลจาก collection users
+      const usersData = await firestoreService.getUsers();
+      // กรองเฉพาะผู้ที่มีบทบาท manager เท่านั้น (ผู้จัดการศูนย์)
+      const managerUsers = usersData?.filter(user => 
+        user.role === 'manager'
+      ) || [];
+      
+      // ถ้ามีผู้จัดการศูนย์ ให้เลือกคนแรกโดยอัตโนมัติ
+      if (managerUsers.length > 0) {
+        const firstManager = managerUsers[0];
+        
+        // แปลง displayName เป็นชื่อจริง (ไม่ใช่ email)
+        let approverName = firstManager.displayName || 'ผู้จัดการศูนย์';
+        
+        console.log('🔍 Manager Data:', {
+          displayName: firstManager.displayName,
+          email: firstManager.email,
+          role: firstManager.role
+        });
+        
+        // ตรวจสอบว่า displayName เป็น email หรือไม่
+        if (approverName.includes('@')) {
+          // หาก displayName เป็น email ให้ใช้ชื่อจาก email
+          const emailName = firstManager.email?.split('@')[0] || 'ผู้จัดการศูนย์';
+          approverName = emailName;
+          console.log('⚠️ displayName เป็น email ใช้ชื่อจาก email:', approverName);
+        } else if (!approverName || approverName.trim() === '') {
+          // หาก displayName เป็น null หรือ empty ให้ใช้ชื่อจาก email
+          const emailName = firstManager.email?.split('@')[0] || 'ผู้จัดการศูนย์';
+          approverName = emailName;
+          console.log('⚠️ displayName เป็น null ใช้ชื่อจาก email:', approverName);
+        } else {
+          console.log('✅ ใช้ชื่อจริงจาก displayName:', approverName);
+        }
+        
+        setFormData(prev => ({
+          ...prev,
+          approver_id: firstManager.id,
+          approver_name: approverName,
+          approver_email: firstManager.email
+        }));
+        
+        console.log('📋 ข้อมูลผู้อนุมัติที่ตั้งค่า:', {
+          approver_id: firstManager.id,
+          approver_name: approverName,
+          approver_email: firstManager.email
+        });
+      }
+      
+      setApprovers(managerUsers);
     } catch (error) {
       console.error('Error loading approvers:', error);
       setApprovers([]);
@@ -132,7 +185,8 @@ export function AddBudgetRequestDialog({ onSuccess, editRequest }: AddBudgetRequ
   const loadProducts = async () => {
     try {
       setIsLoadingProducts(true);
-      const data = await api.getProducts();
+      const { firestoreService } = await import('@/lib/firestoreService');
+      const data = await firestoreService.getProducts();
       setProducts(data || []);
     } catch (error) {
       console.error('Error loading products:', error);
@@ -146,8 +200,26 @@ export function AddBudgetRequestDialog({ onSuccess, editRequest }: AddBudgetRequ
   const fetchAccountCodes = async () => {
     try {
       setIsLoadingAccountCodes(true);
-      const data = await api.getAccountCodes();
-      setAccountCodes(data || []);
+      const { firestoreService } = await import('@/lib/firestoreService');
+      const data = await firestoreService.getAccountCodes();
+      
+      // กรองเฉพาะ account codes ที่มี code (ไม่ใช่ header) และไม่ซ้ำ
+      const uniqueAccountCodes = data?.filter((account, index, self) => 
+        account.code && 
+        account.type !== 'header' &&
+        self.findIndex(a => a.code === account.code) === index
+      ) || [];
+      
+      // เรียงลำดับตาม code
+      const sortedAccountCodes = uniqueAccountCodes.sort((a, b) => {
+        if (a.code && b.code) {
+          return a.code.localeCompare(b.code);
+        }
+        return 0;
+      });
+      
+      console.log('📊 Account Codes loaded:', sortedAccountCodes.length, 'items');
+      setAccountCodes(sortedAccountCodes);
     } catch (error) {
       console.error('Error loading account codes:', error);
       setAccountCodes([]);
@@ -240,7 +312,7 @@ export function AddBudgetRequestDialog({ onSuccess, editRequest }: AddBudgetRequ
       setFormData(prev => ({
         ...prev,
         approver_id: approverId,
-        approver_name: approver.name,
+        approver_name: approver.displayName,
         approver_email: approver.email
       }));
     }
@@ -427,7 +499,8 @@ ${requestData.note ? `หมายเหตุ: ${requestData.note}` : ''}
       };
 
       // สร้างคำขอใช้งบประมาณ
-      const newRequest = await api.createBudgetRequest(requestData);
+      const { firestoreService } = await import('@/lib/firestoreService');
+      const newRequest = await firestoreService.createBudgetRequest(requestData);
       
       // ส่งอีเมลไปยังผู้อนุมัติ
       await sendApprovalEmail(newRequest, formData.approver_name, formData.approver_email, formData.cc_emails);
@@ -481,27 +554,15 @@ ${requestData.note ? `หมายเหตุ: ${requestData.note}` : ''}
                   <User className="h-4 w-4" />
                   ผู้ขอใช้งบประมาณ *
                 </Label>
-                <Select
+                <Input
+                  id="requester"
                   value={formData.requester}
-                  onValueChange={(value) => { if (value !== '__loading__' && value !== '__empty__') handleInputChange('requester', value); }}
-                >
-                  <SelectTrigger className="h-11">
-                    <SelectValue placeholder={isLoadingRequesters ? "กำลังโหลด..." : "เลือกผู้ขอใช้งบประมาณ"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {isLoadingRequesters ? (
-                      <SelectItem value="__loading__" disabled>กำลังโหลดรายชื่อผู้ขอ...</SelectItem>
-                    ) : !requesters || !Array.isArray(requesters) || requesters.length === 0 ? (
-                      <SelectItem value="__empty__" disabled>ไม่พบรายชื่อผู้ขอ</SelectItem>
-                    ) : (
-                      requesters.map((requester) => (
-                        <SelectItem key={requester.id} value={requester.name}>
-                          {requester.name} ({requester.department || 'ทั่วไป'})
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                  onChange={(e) => handleInputChange('requester', e.target.value)}
+                  placeholder="ชื่อผู้ขอใช้งบประมาณ"
+                  className="h-11"
+                  readOnly
+                />
+                <p className="text-xs text-gray-500">ใช้ชื่อของคนที่ login เข้าระบบ</p>
               </div>
 
               <div className="space-y-2">
@@ -586,28 +647,21 @@ ${requestData.note ? `หมายเหตุ: ${requestData.note}` : ''}
                   <User className="h-4 w-4" />
                   ผู้อนุมัติ *
                 </Label>
-                <Select
-                  value={formData.approver_id}
-                  onValueChange={handleApproverChange}
-                  disabled={isLoadingApprovers}
-                >
-                  <SelectTrigger className="h-11">
-                    <SelectValue placeholder={isLoadingApprovers ? "กำลังโหลด..." : "เลือกผู้อนุมัติ"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {isLoadingApprovers ? (
-                      <SelectItem value="loading" disabled>กำลังโหลดข้อมูล...</SelectItem>
-                    ) : approvers.length > 0 ? (
-                      approvers.map((approver) => (
-                        <SelectItem key={approver.id} value={approver.id.toString()}>
-                          {approver.name} ({approver.department || approver.position || 'ทั่วไป'})
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <SelectItem value="no-data" disabled>ไม่มีข้อมูลผู้อนุมัติ</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+                {isLoadingApprovers ? (
+                  <div className="h-11 flex items-center justify-center bg-gray-50 rounded-md border">
+                    <span className="text-sm text-gray-500">กำลังโหลดข้อมูล...</span>
+                  </div>
+                ) : approvers.length > 0 ? (
+                  <div className="h-11 flex items-center bg-green-50 border border-green-200 rounded-md px-3">
+                    <span className="text-sm font-medium text-green-800">
+                      {formData.approver_name} (ผู้จัดการศูนย์)
+                    </span>
+                  </div>
+                ) : (
+                  <div className="h-11 flex items-center bg-red-50 border border-red-200 rounded-md px-3">
+                    <span className="text-sm text-red-600">ไม่มีข้อมูลผู้อนุมัติ (ผู้จัดการศูนย์)</span>
+                  </div>
+                )}
               </div>
 
               {formData.approver_email && (

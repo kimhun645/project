@@ -90,7 +90,8 @@ export function EditCategoryDialog({ category, open, onOpenChange, onCategoryUpd
     setIsLoading(true);
 
     try {
-      await api.updateCategory(category.id, {
+      const { firestoreService } = await import('@/lib/firestoreService');
+      await firestoreService.updateCategory(category.id, {
         name: formData.name.trim(),
         description: formData.description.trim() || undefined,
         is_medicine: formData.is_medicine

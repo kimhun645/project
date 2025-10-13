@@ -17,22 +17,12 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: process.env.NODE_ENV === 'development',
-    // Optimize chunks for better caching and loading
+    // Single bundle configuration
     rollupOptions: {
       output: {
-        manualChunks: {
-          // Vendor chunk for React and related libraries
-          vendor: ['react', 'react-dom', 'react-router-dom'],
-          // UI components chunk
-          ui: ['@radix-ui/react-accordion', '@radix-ui/react-alert-dialog', '@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu'],
-          // Charts and visualization
-          charts: ['recharts'],
-          // Forms and validation
-          forms: ['react-hook-form', '@hookform/resolvers', 'zod'],
-          // Utilities
-          utils: ['date-fns', 'clsx', 'class-variance-authority', 'tailwind-merge'],
-        },
-        // Generate consistent chunk names for better caching
+        // Single bundle - no manual chunks
+        manualChunks: undefined,
+        // Generate single file names
         chunkFileNames: 'js/[name]-[hash].js',
         entryFileNames: 'js/[name]-[hash].js',
         assetFileNames: (assetInfo) => {

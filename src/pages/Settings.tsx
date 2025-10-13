@@ -15,6 +15,7 @@ import { User, Bell, Shield, Palette, Upload, Download, Trash2, Settings as Sett
 import { Layout } from '@/components/Layout/Layout';
 import { UserManagement } from '@/components/UserManagement';
 import { RoleManagement } from '@/components/RoleManagement';
+import { AccountManagement } from '@/components/AccountManagement';
 import { useAuth } from '@/contexts/AuthContext';
 import { FirestoreService } from '@/lib/firestoreService';
 
@@ -218,7 +219,7 @@ export default function Settings() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="general" className="flex items-center gap-2">
               <SettingsIcon className="h-4 w-4" />
                 ทั่วไป
@@ -226,6 +227,10 @@ export default function Settings() {
             <TabsTrigger value="notifications" className="flex items-center gap-2">
               <Bell className="h-4 w-4" />
                 การแจ้งเตือน
+              </TabsTrigger>
+            <TabsTrigger value="accounts" className="flex items-center gap-2">
+              <CreditCard className="h-4 w-4" />
+              Account
               </TabsTrigger>
             <TabsTrigger value="users" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
@@ -428,6 +433,11 @@ export default function Settings() {
               </CardContent>
             </Card>
             )}
+          </TabsContent>
+
+          {/* Account Management */}
+          <TabsContent value="accounts">
+            <AccountManagement />
           </TabsContent>
 
           {/* User Management */}

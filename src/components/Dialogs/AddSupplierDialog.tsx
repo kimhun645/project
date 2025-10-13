@@ -83,7 +83,8 @@ export function AddSupplierDialog({ onSupplierAdded }: AddSupplierDialogProps) {
     setIsLoading(true);
 
     try {
-      await api.createSupplier({
+      const { firestoreService } = await import('@/lib/firestoreService');
+      await firestoreService.createSupplier({
         name: formData.name.trim(),
         contact_person: formData.contact_person.trim() || undefined,
         email: formData.email.trim() || undefined,

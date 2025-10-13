@@ -33,7 +33,7 @@ export default function Categories() {
   // Pagination and view state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(12);
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>('grid');
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [sortField, setSortField] = useState('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   
@@ -158,6 +158,7 @@ export default function Categories() {
       setCategories(categoriesData || []);
       setProductCounts(counts);
     } catch (error) {
+      console.error('Error loading categories:', error);
       toast({
         title: "เกิดข้อผิดพลาด",
         description: "ไม่สามารถโหลดข้อมูลหมวดหมู่ได้",

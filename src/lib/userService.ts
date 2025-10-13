@@ -85,7 +85,7 @@ export const USER_ROLES: UserRole[] = [
   },
   {
     id: 'manager',
-    name: 'ผู้จัดการ',
+    name: 'ผู้จัดการศูนย์',
     permissions: [
       'products:read',
       'products:create',
@@ -288,9 +288,20 @@ class UserService {
   // Delete user
   async deleteUser(userId: string): Promise<void> {
     try {
-      await deleteDoc(doc(this.db, 'users', userId));
+      console.log('🗑️ กำลังลบผู้ใช้จาก Firestore:', userId);
+      console.log('🔍 ตรวจสอบ userId:', userId);
+      console.log('🔍 ตรวจสอบ db instance:', this.db);
+      
+      const userDocRef = doc(this.db, 'users', userId);
+      console.log('🔍 ตรวจสอบ userDocRef:', userDocRef);
+      
+      await deleteDoc(userDocRef);
+      console.log('✅ ลบผู้ใช้จาก Firestore สำเร็จ');
     } catch (error: any) {
-      throw new Error('ไม่สามารถลบผู้ใช้ได้');
+      console.error('❌ ข้อผิดพลาดในการลบผู้ใช้จาก Firestore:', error);
+      console.error('❌ Error code:', error.code);
+      console.error('❌ Error message:', error.message);
+      throw new Error(`ไม่สามารถลบผู้ใช้ได้: ${error.message}`);
     }
   }
 

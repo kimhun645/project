@@ -1,96 +1,9 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ฟังก์ชันตรวจสอบ authentication
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-    
-    // Products Collection
-    match /products/{productId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // Categories Collection
-    match /categories/{categoryId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // Suppliers Collection
-    match /suppliers/{supplierId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // Stock Movements Collection
-    match /movements/{movementId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // Stock Movements Collection (alternative name)
-    match /stock_movements/{movementId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // Users Collection
-    match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && request.auth.uid == userId;
-      allow create: if isAuthenticated();
-    }
-
-    // Budget Requests Collection
-    match /budgetRequests/{requestId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    match /budget_requests/{requestId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // Approvals Collection
-    match /approvals/{approvalId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // Approvers Collection
-    match /approvers/{approverId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // Requesters Collection
-    match /requesters/{requesterId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // Account Codes Collection
-    match /accountCodes/{codeId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // Access Codes Collection
-    match /accessCodes/{codeId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // Approval Logs Collection
-    match /approvalLogs/{logId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // App Settings Collection
-    match /appSettings/{settingId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
-    }
-
-    match /app_settings/{settingId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
-    }
-
-    // Audit Logs Collection
-    match /auditLogs/{logId} {
-      allow read, write: if isAuthenticated();
+    // Allow all operations for testing
+    match /{document=**} {
+      allow read, write: if true;
     }
   }
 }

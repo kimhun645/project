@@ -8,7 +8,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Plus, Eye, Trash2, MoreHorizontal, Printer, Calendar, User, CreditCard, FileText, Clock, CheckCircle, Search, Filter, X, RefreshCw, TrendingUp, AlertTriangle } from 'lucide-react';
+import { Plus, Eye, Trash2, MoreHorizontal, Printer, Calendar, User, CreditCard, FileText, Clock, CheckCircle, Search, Filter, X, RefreshCw, TrendingUp, AlertTriangle, FileEdit } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { type BudgetRequest as DBBudgetRequest, type Approval } from '@/lib/firestoreService';
 import { useBarcodeScanner } from '@/hooks/use-barcode-scanner';
@@ -56,7 +56,7 @@ export default function BudgetRequest() {
   // Pagination and view state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(12);
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>('grid');
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [sortField, setSortField] = useState('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   
@@ -141,24 +141,82 @@ export default function BudgetRequest() {
   useEffect(() => {
     const fetchApprovalData = async () => {
       if (selectedRequest && selectedRequest.status !== 'PENDING') {
+        console.log('🔍 กำลังดึงข้อมูลผู้อนุมัติสำหรับคำขอ:', selectedRequest.request_no);
+        console.log('📊 ข้อมูล budgetRequest:', {
+          approver_name: selectedRequest.approver_name,
+          approved_by: selectedRequest.approved_by,
+          approved_at: selectedRequest.approved_at,
+          status: selectedRequest.status
+        });
+
         try {
-          const { firestoreService } = await import('@/lib/firestoreService');
-          const approval = await firestoreService.getApprovalByRequestId(String(selectedRequest.id));
-          if (approval) {
-            const approvalInfo: ApprovalInfo = {
-              approver_name: approval.approver_name || 'ไม่ระบุ',
-              created_at: approval.created_at || new Date().toISOString(),
-              remark: approval.remark
-            };
-            setApprovalData(approvalInfo);
-          } else {
-            setApprovalData(null);
+          // ตรวจสอบข้อมูลผู้อนุมัติจากหลายแหล่งตามลำดับความสำคัญ
+          let approverName = '';
+          let approvalDate = '';
+          let remark = '';
+
+          // 1. ตรวจสอบ approver_name (จาก FirestoreService.updateBudgetRequestStatus)
+          if (selectedRequest.approver_name && selectedRequest.approver_name.trim() !== '') {
+            approverName = selectedRequest.approver_name;
+            approvalDate = selectedRequest.approved_at || new Date().toISOString();
+            console.log('✅ พบข้อมูลผู้อนุมัติจาก approver_name:', approverName);
           }
+          // 2. ตรวจสอบ approved_by (จาก ApprovalPage)
+          else if (selectedRequest.approved_by && selectedRequest.approved_by.trim() !== '') {
+            approverName = selectedRequest.approved_by;
+            approvalDate = selectedRequest.approved_at || new Date().toISOString();
+            console.log('✅ พบข้อมูลผู้อนุมัติจาก approved_by:', approverName);
+          }
+          // 3. หากไม่มีใน budgetRequest ให้ลองดึงจาก approval collection
+          else {
+            console.log('🔍 ไม่พบข้อมูลใน budgetRequest กำลังดึงจาก approval collection...');
+            const { firestoreService } = await import('@/lib/firestoreService');
+            const approval = await firestoreService.getApprovalByRequestId(String(selectedRequest.id));
+            if (approval) {
+              approverName = approval.approver_name || 'ไม่ระบุ';
+              approvalDate = approval.created_at || new Date().toISOString();
+              remark = approval.remark || '';
+              console.log('✅ พบข้อมูลผู้อนุมัติจาก approval collection:', approverName);
+            } else {
+              console.log('⚠️ ไม่พบข้อมูลใน approval collection');
+            }
+          }
+
+          // 4. หากยังไม่มีข้อมูล ให้ใช้ fallback
+          if (!approverName || approverName.trim() === '') {
+            approverName = 'ผู้จัดการศูนย์';
+            approvalDate = selectedRequest.approved_at || new Date().toISOString();
+            console.log('⚠️ ใช้ fallback approver name:', approverName);
+          }
+
+          // ตรวจสอบว่าเป็น email หรือไม่
+          if (approverName.includes('@')) {
+            approverName = 'ผู้จัดการศูนย์';
+            console.log('⚠️ ตรวจพบ email เปลี่ยนเป็น fallback:', approverName);
+          }
+
+          const approvalInfo: ApprovalInfo = {
+            approver_name: approverName,
+            created_at: approvalDate,
+            remark: remark || undefined
+          };
+
+          console.log('📋 ข้อมูลผู้อนุมัติที่ได้:', approvalInfo);
+          setApprovalData(approvalInfo);
+
         } catch (err) {
-          console.error('Error fetching approval data:', err);
-          setApprovalData(null);
+          console.error('❌ ข้อผิดพลาดในการดึงข้อมูลผู้อนุมัติ:', err);
+          // Fallback to budgetRequest data
+          const approvalInfo: ApprovalInfo = {
+            approver_name: selectedRequest.approved_by || selectedRequest.approver_name || 'ผู้จัดการศูนย์',
+            created_at: selectedRequest.approved_at || new Date().toISOString(),
+            remark: undefined
+          };
+          console.log('🔄 ใช้ fallback data:', approvalInfo);
+          setApprovalData(approvalInfo);
         }
       } else {
+        console.log('ℹ️ คำขอยังรอการอนุมัติ ไม่ต้องดึงข้อมูลผู้อนุมัติ');
         setApprovalData(null);
       }
     };
@@ -170,8 +228,13 @@ export default function BudgetRequest() {
     try {
       const { firestoreService } = await import('@/lib/firestoreService');
       const data = await firestoreService.getBudgetRequests();
+      console.log('🔍 ข้อมูลที่ได้รับจาก Firestore:', data);
+      console.log('📊 จำนวนรายการ:', data?.length || 0);
+      
       // Ensure data is always an array
-      setRequests(Array.isArray(data) ? data : []);
+      const requestsData = Array.isArray(data) ? data : [];
+      console.log('✅ ข้อมูลที่ตั้งค่า:', requestsData);
+      setRequests(requestsData);
     } catch (err) {
       console.error('Error fetching requests:', err);
       // Don't show error toast on initial load - just set empty array
@@ -245,9 +308,9 @@ export default function BudgetRequest() {
     if (!printWindow) return;
 
     const itemsTable = request.material_list?.length && Array.isArray(request.material_list)
-      ? `<table style="width:100%;border-collapse:collapse;margin:15px 0;font-size:12px;"><thead><tr style="background-color:#f5f5f5;"><th style="border:1px solid #ccc;padding:8px;text-align:left;">รายการ</th><th style="border:1px solid #ccc;padding:8px;text-align:left;">จำนวน</th></tr></thead><tbody>${request.material_list
+      ? `<table style="width:100%;border-collapse:collapse;margin:15px 0;font-size:12px;"><thead><tr style="background-color:#f5f5f5;"><th style="border:1px solid #ccc;padding:8px;text-align:left;">รายการ</th><th style="border:1px solid #ccc;padding:8px;text-align:left;">จำนวน</th><th style="border:1px solid #ccc;padding:8px;text-align:left;">หน่วย</th></tr></thead><tbody>${request.material_list
           .map(
-            (item, idx) => `<tr><td style="border:1px solid #ccc;padding:8px;">${item.item}</td><td style="border:1px solid #ccc;padding:8px;">${item.quantity}</td></tr>`
+            (item, idx) => `<tr><td style="border:1px solid #ccc;padding:8px;">${item.name || item.item || '-'}</td><td style="border:1px solid #ccc;padding:8px;">${item.quantity || '-'}</td><td style="border:1px solid #ccc;padding:8px;">${item.unit || '-'}</td></tr>`
           )
           .join('')}</tbody></table>`
       : `<p style="text-align:center;color:#666;font-size:12px;margin:15px 0;">ไม่มีรายการวัสดุ</p>`;
@@ -374,7 +437,7 @@ export default function BudgetRequest() {
     </div>
     <div class="info-row">
       <div class="info-label">สถานะ:</div>
-      <div class="info-value">${request.status === 'PENDING' ? 'รอการอนุมัติ' : request.status === 'APPROVED' ? 'อนุมัติแล้ว' : 'ไม่อนุมัติ'}</div>
+      <div class="info-value">${request.status === 'PENDING' ? 'รอการอนุมัติ' : request.status === 'APPROVED' ? 'อนุมัติแล้ว' : request.status === 'REJECTED' ? 'ไม่อนุมัติ' : request.status || 'ไม่ระบุ'}</div>
     </div>
   </div>
   
@@ -387,6 +450,11 @@ export default function BudgetRequest() {
   <div class="material-section">
     <h3>รายการวัสดุ</h3>
     ${itemsTable}
+    ${request.material_list && request.material_list.length > 0 ? `
+    <div style="margin-top: 15px; padding: 10px; background-color: #f9f9f9; border-radius: 4px;">
+      <strong>สรุปรายการวัสดุ:</strong> ${request.material_list.length} รายการ
+    </div>
+    ` : ''}
   </div>
   
   ${approvalInfo ? `
@@ -545,32 +613,38 @@ export default function BudgetRequest() {
       key: 'request_no',
       title: 'หมายเลขคำขอ',
       sortable: true,
-      render: (request: DBBudgetRequest) => (
-        <div className="flex items-center gap-2">
-          <span className="font-medium">{request?.request_no || 'Unknown'}</span>
-          {request?.status === 'PENDING' && (
-            <Clock className="h-4 w-4 text-orange-600" />
-          )}
-        </div>
-      )
+      render: (request: DBBudgetRequest) => {
+        console.log('🔍 Render request_no:', request);
+        console.log('🔍 request.request_no:', request?.request_no);
+        console.log('🔍 request.id:', request?.id);
+        console.log('🔍 request.requester:', request?.requester);
+        return (
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{request?.request_no || 'Unknown'}</span>
+            {request?.status === 'PENDING' && (
+              <Clock className="h-4 w-4 text-orange-600" />
+            )}
+          </div>
+        );
+      }
     },
     {
-      key: 'requester_name',
+      key: 'requester',
       title: 'ผู้ขอ',
       sortable: true,
       render: (request: DBBudgetRequest) => (
         <span className="text-sm text-muted-foreground">
-          {(request as any)?.requester_name || '-'}
+          {request?.requester || '-'}
         </span>
       )
     },
     {
-      key: 'description',
+      key: 'note',
       title: 'รายละเอียด',
       sortable: true,
       render: (request: DBBudgetRequest) => (
         <span className="text-sm text-muted-foreground">
-          {(request as any)?.description || '-'}
+          {request?.account_name || request?.note || '-'}
         </span>
       )
     },
@@ -631,6 +705,7 @@ export default function BudgetRequest() {
                   setDetailDialogOpen(true);
                 }}
                 className="h-8 w-8 p-0 hover:bg-blue-50"
+                title="ดูรายละเอียด"
               >
                 <Eye className="h-4 w-4" />
               </Button>
@@ -642,8 +717,18 @@ export default function BudgetRequest() {
                   setDeleteDialogOpen(true);
                 }}
                 className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-red-50"
+                title="ลบ"
               >
                 <Trash2 className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handlePrint(request)}
+                className="h-8 w-8 p-0 hover:bg-gray-50"
+                title="พิมพ์"
+              >
+                <Printer className="h-4 w-4" />
               </Button>
             </>
           ) : (
@@ -809,13 +894,6 @@ export default function BudgetRequest() {
         selectedItems={selectedRequests}
         onSelectItem={handleSelectRequest}
         onSelectAll={handleSelectAll}
-        onDelete={(id) => {
-          const request = paginatedRequests.find(r => String(r.id) === String(id));
-          if (request) {
-            setRequestToDelete(request);
-            setDeleteDialogOpen(true);
-          }
-        }}
         sortField={sortField}
         sortDirection={sortDirection}
         loading={loading}
@@ -863,92 +941,267 @@ export default function BudgetRequest() {
         </DialogContent>
       </Dialog>
 
-      {/* Detail Dialog */}
+      {/* Detail Dialog - Modern Design */}
       <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>รายละเอียดคำขออนุมัติใช้งบประมาณ</DialogTitle>
-            <DialogDescription>
-              ข้อมูลคำขอ {selectedRequest?.request_no}
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden p-0">
           {selectedRequest && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <Label className="text-sm font-medium text-gray-600">หมายเลขคำขอ</Label>
-                  <p className="text-lg font-semibold">{selectedRequest.request_no}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-600">ผู้ขอ</Label>
-                  <p className="text-lg font-semibold">{(selectedRequest as any)?.requester_name || '-'}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-600">จำนวนเงิน</Label>
-                  <p className="text-lg font-semibold text-green-600">
-                    ฿{parseFloat(Number(selectedRequest.amount).toFixed(2)).toLocaleString()}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-600">สถานะ</Label>
-                  <div className="mt-1">
-                    {selectedRequest.status === 'APPROVED' ? (
-                      <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200">
-                        อนุมัติแล้ว
-                      </Badge>
-                    ) : selectedRequest.status === 'REJECTED' ? (
-                      <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200">
-                        ไม่อนุมัติ
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-200">
-                        รอการอนุมัติ
-                      </Badge>
-                    )}
+            <div className="bg-gradient-to-br from-blue-50 via-white to-cyan-50 min-h-[90vh]">
+              {/* Header Section */}
+              <div className="bg-gradient-to-r from-blue-600 via-cyan-600 to-teal-600 p-8 text-white">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm">
+                      <FileText className="h-8 w-8" />
+                    </div>
+                    <div>
+                      <h1 className="text-3xl font-bold">รายละเอียดคำขออนุมัติใช้งบประมาณ</h1>
+                      <p className="text-blue-100 text-lg">รหัสคำขอ: {selectedRequest.request_no}</p>
+                    </div>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setDetailDialogOpen(false)}
+                    className="h-10 w-10 p-0 hover:bg-white/20 rounded-full"
+                  >
+                    <X className="h-5 w-5" />
+                  </Button>
                 </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-600">วันที่สร้าง</Label>
-                  <p className="text-lg font-semibold">
-                    {new Date(selectedRequest.created_at).toLocaleDateString('th-TH')}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-600">วันที่อัพเดท</Label>
-                  <p className="text-lg font-semibold">
-                    {new Date(selectedRequest.updated_at).toLocaleDateString('th-TH')}
-                  </p>
-                </div>
-              </div>
-              
-              <div>
-                <Label className="text-sm font-medium text-gray-600">รายละเอียด</Label>
-                <p className="text-lg font-semibold mt-1">{(selectedRequest as any)?.description || '-'}</p>
               </div>
 
-              {approvalData && (
-                <div className="border-t pt-6">
-                  <h4 className="text-lg font-semibold mb-4">ข้อมูลการอนุมัติ</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <Label className="text-sm font-medium text-gray-600">ผู้อนุมัติ</Label>
-                      <p className="text-lg font-semibold">{approvalData.approver_name}</p>
+              {/* Content Section */}
+              <div className="p-8 overflow-y-auto max-h-[calc(95vh-200px)]">
+                {/* Status and Basic Info Cards */}
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+                  {/* Status Card */}
+                  <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl p-6 border border-orange-200">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <div className="p-2 bg-orange-100 rounded-xl">
+                        <Clock className="h-5 w-5 text-orange-600" />
+                      </div>
+                      <div>
+                        <div className="text-sm text-orange-600 font-medium">สถานะ</div>
+                        <div className="text-lg font-bold text-orange-800">
+                          {selectedRequest.status === 'PENDING' ? 'รอการอนุมัติ' : 
+                           selectedRequest.status === 'APPROVED' ? 'อนุมัติแล้ว' : 'ปฏิเสธ'}
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <Label className="text-sm font-medium text-gray-600">วันที่อนุมัติ</Label>
-                      <p className="text-lg font-semibold">
-                        {new Date(approvalData.created_at).toLocaleDateString('th-TH')}
-                      </p>
+                  </div>
+
+                  {/* Amount Card */}
+                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border border-green-200">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <div className="p-2 bg-green-100 rounded-xl">
+                        <CreditCard className="h-5 w-5 text-green-600" />
+                      </div>
+                      <div>
+                        <div className="text-sm text-green-600 font-medium">จำนวนเงิน</div>
+                        <div className="text-lg font-bold text-green-800">
+                          ฿{parseFloat(Number(selectedRequest.amount).toFixed(2)).toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Requester Card */}
+                  <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-6 border border-purple-200">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <div className="p-2 bg-purple-100 rounded-xl">
+                        <User className="h-5 w-5 text-purple-600" />
+                      </div>
+                      <div>
+                        <div className="text-sm text-purple-600 font-medium">ผู้ขอ</div>
+                        <div className="text-lg font-bold text-purple-800">{selectedRequest.requester || '-'}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Date Card */}
+                  <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-2xl p-6 border border-indigo-200">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <div className="p-2 bg-indigo-100 rounded-xl">
+                        <Calendar className="h-5 w-5 text-indigo-600" />
+                      </div>
+                      <div>
+                        <div className="text-sm text-indigo-600 font-medium">วันที่สร้าง</div>
+                        <div className="text-lg font-bold text-indigo-800">
+                          {new Date(selectedRequest.created_at).toLocaleDateString('th-TH')}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Approver Info - Only show if approved/rejected */}
+                {approvalData && (
+                  <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl p-6 border border-emerald-200 mb-8">
+                    <div className="flex items-center space-x-3">
+                      <div className="p-2 bg-emerald-100 rounded-xl">
+                        <CheckCircle className="h-5 w-5 text-emerald-600" />
+                      </div>
+                      <div>
+                        <div className="text-sm text-emerald-600 font-medium mb-1">ผู้อนุมัติ</div>
+                        <div className="text-lg font-bold text-emerald-800">
+                          {approvalData.approver_name}
+                        </div>
+                        <div className="text-sm text-emerald-600 mt-1">
+                          วันที่: {new Date(approvalData.created_at).toLocaleDateString('th-TH', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                          })}
+                        </div>
+                      </div>
                     </div>
                     {approvalData.remark && (
-                      <div className="md:col-span-2">
-                        <Label className="text-sm font-medium text-gray-600">หมายเหตุ</Label>
-                        <p className="text-lg font-semibold mt-1">{approvalData.remark}</p>
+                      <div className="mt-4 p-4 bg-white/50 rounded-xl border border-emerald-200">
+                        <div className="text-sm text-emerald-600 font-medium mb-1">หมายเหตุ</div>
+                        <div className="text-emerald-800">{approvalData.remark}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Document Content */}
+                <div className="bg-gradient-to-br from-gray-50 to-slate-50 rounded-2xl p-8 border border-gray-200">
+                  <div className="text-center mb-8">
+                    <h2 className="text-2xl font-bold text-gray-800 mb-2">บันทึกขออนุมัติใช้งบประมาณ</h2>
+                    <div className="w-24 h-1 bg-gradient-to-r from-blue-500 to-cyan-500 mx-auto rounded-full"></div>
+                  </div>
+
+                  {/* Organization Info */}
+                  <div className="space-y-4 mb-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-white p-4 rounded-xl border border-gray-200">
+                        <div className="text-sm text-gray-600 mb-1">ส่วนงาน</div>
+                        <div className="font-semibold text-gray-800">ศูนย์จัดการธนบัตร นครราชสีมา</div>
+                      </div>
+                      <div className="bg-white p-4 rounded-xl border border-gray-200">
+                        <div className="text-sm text-gray-600 mb-1">รหัสบัญชี</div>
+                        <div className="font-semibold text-gray-800">
+                          {selectedRequest.account_code} {selectedRequest.account_name && `(${selectedRequest.account_name})`}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Request Content */}
+                  <div className="bg-white p-6 rounded-xl border border-gray-200 mb-6">
+                    <p className="text-justify leading-relaxed text-gray-700">
+                      งานธุรการ ขอใช้งบประมาณจำนวน <span className="font-bold text-blue-600 text-lg">
+                        {parseFloat(Number(selectedRequest.amount).toFixed(2)).toLocaleString()} บาท
+                      </span> 
+                      จากรหัสบัญชี <span className="font-bold text-purple-600">{selectedRequest.account_code}</span>
+                      {selectedRequest.account_name && <span className="text-gray-600"> ({selectedRequest.account_name})</span>}
+                      ตามรายการดังต่อไปนี้
+                    </p>
+                  </div>
+
+                  {/* Material List */}
+                  {selectedRequest.material_list && selectedRequest.material_list.length > 0 ? (
+                    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+                      <div className="bg-gradient-to-r from-gray-100 to-slate-100 px-6 py-4 border-b border-gray-200">
+                        <h3 className="text-lg font-semibold text-gray-800">รายการวัสดุ</h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600 border-b border-gray-200">ลำดับ</th>
+                              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600 border-b border-gray-200">รายการ</th>
+                              <th className="px-6 py-4 text-center text-sm font-semibold text-gray-600 border-b border-gray-200">จำนวน</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selectedRequest.material_list.map((item, index) => (
+                              <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
+                                <td className="px-6 py-4 text-center text-gray-600 font-medium">{index + 1}</td>
+                                <td className="px-6 py-4 text-gray-800">{item.name || item.item || '-'}</td>
+                                <td className="px-6 py-4 text-center text-gray-600">{item.quantity || '-'} {item.unit || ''}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-xl border-2 border-dashed border-gray-300 p-8 text-center mb-6">
+                      <FileText className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                      <p className="text-gray-500 text-lg">ไม่มีรายการวัสดุ</p>
+                    </div>
+                  )}
+
+                  {/* Note Section */}
+                  {selectedRequest.note && (
+                    <div className="bg-white p-6 rounded-xl border border-gray-200 mb-6">
+                      <div className="text-sm text-gray-600 font-medium mb-2">หมายเหตุ</div>
+                      <p className="text-gray-700">{selectedRequest.note}</p>
+                    </div>
+                  )}
+
+                  {/* Closing Statement */}
+                  <div className="bg-white p-6 rounded-xl border border-gray-200">
+                    <p className="text-justify text-gray-700 font-medium">
+                      จึงเรียนมาเพื่อโปรดพิจารณาอนุมัติ
+                    </p>
+                  </div>
+                </div>
+
+                {/* Signature Section */}
+                <div className="mt-8 bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl p-8 border border-gray-200">
+                  <div className="flex justify-between items-end">
+                    {/* Requester Signature */}
+                    <div className="text-center">
+                      <div className="mb-8">
+                        <div className="h-16 border-b-2 border-gray-400 mb-2"></div>
+                        <div className="text-sm text-gray-600">(ลงชื่อ) ................................................</div>
+                        <div className="text-sm font-semibold text-gray-800">({selectedRequest.requester})</div>
+                        <div className="text-sm text-gray-600">ตำแหน่ง เจ้าหน้าที่งานบริหารธนบัตรอาวุโส (ควบ)</div>
+                      </div>
+                    </div>
+                    
+                    {/* Approver Signature */}
+                    {approvalData && (
+                      <div className="text-center">
+                        <div className="mb-8">
+                          <div className="h-16 border-b-2 border-gray-400 mb-2"></div>
+                          <div className="text-sm text-gray-600">ผู้อนุมัติ</div>
+                          <div className="text-sm font-semibold text-gray-800">({approvalData.approver_name})</div>
+                          <div className="text-sm text-gray-600">ตำแหน่ง ผู้จัดการศูนย์ ศูนย์จัดการธนบัตร นครราชสีมา</div>
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          วันที่อนุมัติ: {new Date(approvalData.created_at).toLocaleDateString('th-TH', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>
                 </div>
-              )}
+              </div>
+
+              {/* Footer Actions */}
+              <div className="bg-white border-t border-gray-200 p-6">
+                <div className="flex justify-end space-x-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => handlePrint(selectedRequest)}
+                    className="px-6 py-2"
+                  >
+                    <Printer className="h-4 w-4 mr-2" />
+                    พิมพ์เอกสาร
+                  </Button>
+                  <Button
+                    onClick={() => setDetailDialogOpen(false)}
+                    className="px-6 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white"
+                  >
+                    ปิด
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </DialogContent>

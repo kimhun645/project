@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -91,6 +92,7 @@ const ApprovalPage: React.FC = () => {
   const { request_id } = useParams<{ request_id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { currentUser } = useAuth();
   const [budgetRequest, setBudgetRequest] = useState<DBBudgetRequest | null>(null);
   const [approvalInfo, setApprovalInfo] = useState<ApprovalInfo | null>(null);
   const [pendingRequests, setPendingRequests] = useState<DBBudgetRequest[]>([]);
@@ -122,50 +124,48 @@ const ApprovalPage: React.FC = () => {
     }
   }, [request_id]);
 
-  // Filtered and sorted requests
-  const filteredRequests = useMemo(() => {
-    if (!Array.isArray(allRequests)) {
-      return [];
+  // Filter and search functions - Show all requests
+  const getFilteredRequests = () => {
+    // Show all requests (not just PENDING)
+    let filtered = allRequests;
+
+    // Search filter
+    if (searchTerm) {
+      filtered = filtered.filter(req => 
+        req.request_no?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        req.requester?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        req.account_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (req.account_name && req.account_name.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
     }
-    
-    return allRequests.filter(request => {
-      // Search term filter
-      if (searchTerm) {
-        const searchLower = searchTerm.toLowerCase();
-        const matchesSearch = 
-          request.request_no?.toLowerCase().includes(searchLower) ||
-          request.requester?.toLowerCase().includes(searchLower) ||
-          request.account_code?.toLowerCase().includes(searchLower);
-        if (!matchesSearch) return false;
-      }
-      
-      // Status filter
-      if (statusFilter !== 'ALL' && request.status !== statusFilter) {
-        return false;
-      }
-      
-      // Amount filter
-      if (amountFilter !== 'ALL') {
-        const amount = parseFloat(request.amount.toString());
+
+    // Amount filter
+    if (amountFilter !== 'ALL') {
+      filtered = filtered.filter(req => {
+        const amount = parseFloat(req.amount?.toString() || '0');
         switch (amountFilter) {
-          case 'UNDER_1000':
-            if (amount >= 1000) return false;
-            break;
-          case '1000_5000':
-            if (amount < 1000 || amount > 5000) return false;
-            break;
-          case '5000_10000':
-            if (amount < 5000 || amount > 10000) return false;
-            break;
-          case 'OVER_10000':
-            if (amount <= 10000) return false;
-            break;
+          case 'UNDER_1000': return amount < 1000;
+          case '1000_5000': return amount >= 1000 && amount <= 5000;
+          case '5000_10000': return amount > 5000 && amount <= 10000;
+          case 'OVER_10000': return amount > 10000;
+          default: return true;
         }
-      }
-      
-      return true;
-    });
-  }, [allRequests, searchTerm, statusFilter, amountFilter]);
+      });
+    }
+
+    return filtered;
+  };
+
+  // Use getFilteredRequests function
+  const filteredRequests = getFilteredRequests();
+  
+  // Debug logging
+  console.log('🔍 Debug Info:');
+  console.log('📊 allRequests:', allRequests.length);
+  console.log('🔍 filteredRequests:', filteredRequests.length);
+  console.log('🔍 searchTerm:', searchTerm);
+  console.log('🔍 statusFilter:', statusFilter);
+  console.log('🔍 amountFilter:', amountFilter);
 
   // Sorted requests
   const sortedRequests = useMemo(() => {
@@ -332,93 +332,198 @@ const ApprovalPage: React.FC = () => {
       key: 'request_no',
       title: 'รหัสคำขอ',
       sortable: true,
-      render: (value, row) => (
-        <div className="font-semibold text-blue-600">
-          {value}
-        </div>
-      )
+      render: (value, row) => {
+        let displayValue = '';
+        if (typeof value === 'string') {
+          displayValue = value;
+        } else if (value && typeof value === 'object' && value.request_no) {
+          displayValue = value.request_no;
+        } else {
+          displayValue = String(value || '');
+        }
+        
+        return (
+          <div className="font-semibold text-blue-600">
+            {displayValue}
+          </div>
+        );
+      }
     },
     {
       key: 'requester',
       title: 'ผู้ขอ',
       sortable: true,
-      render: (value) => (
-        <div className="flex items-center gap-2">
-          <User className="h-4 w-4 text-gray-500" />
-          <span>{value}</span>
-        </div>
-      )
+      render: (value) => {
+        let displayValue = '';
+        if (typeof value === 'string') {
+          displayValue = value;
+        } else if (value && typeof value === 'object' && value.requester) {
+          displayValue = value.requester;
+        } else {
+          displayValue = String(value || '');
+        }
+        
+        return (
+          <div className="flex items-center gap-2">
+            <User className="h-4 w-4 text-gray-500" />
+            <span>{displayValue}</span>
+          </div>
+        );
+      }
     },
     {
       key: 'amount',
       title: 'จำนวนเงิน',
       sortable: true,
-      render: (value) => (
-        <div className="text-right">
-          <div className="font-semibold text-green-600">
-            ฿{parseFloat(value.toString()).toLocaleString('th-TH')}
+      render: (value) => {
+        // Handle different data types
+        let amount = 0;
+        if (typeof value === 'number') {
+          amount = value;
+        } else if (typeof value === 'string') {
+          amount = parseFloat(value) || 0;
+        } else if (value && typeof value === 'object' && value.amount) {
+          amount = parseFloat(value.amount) || 0;
+        }
+        
+        return (
+          <div className="text-right">
+            <div className="font-semibold text-green-600">
+              ฿{amount.toLocaleString('th-TH')}
+            </div>
           </div>
-        </div>
-      )
+        );
+      }
     },
     {
       key: 'account_code',
       title: 'รหัสบัญชี',
       sortable: true,
-      render: (value, row) => (
-        <div>
-          <div className="font-medium">{value}</div>
-          {row.account_name && (
-            <div className="text-sm text-gray-500">{row.account_name}</div>
-          )}
-        </div>
-      )
+      render: (value, row) => {
+        let accountCode = '';
+        let accountName = '';
+        
+        if (typeof value === 'string') {
+          accountCode = value;
+        } else if (value && typeof value === 'object' && value.account_code) {
+          accountCode = value.account_code;
+        } else {
+          accountCode = String(value || '');
+        }
+        
+        if (row && typeof row === 'object' && row.account_name) {
+          accountName = row.account_name;
+        } else if (value && typeof value === 'object' && value.account_name) {
+          accountName = value.account_name;
+        }
+        
+        return (
+          <div>
+            <div className="font-medium">{accountCode}</div>
+            {accountName && (
+              <div className="text-sm text-gray-500">{accountName}</div>
+            )}
+          </div>
+        );
+      }
     },
     {
       key: 'request_date',
       title: 'วันที่ขอ',
       sortable: true,
-      render: (value) => (
-        <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-gray-500" />
-          <span>{new Date(value).toLocaleDateString('th-TH')}</span>
-        </div>
-      )
+      render: (value, row) => {
+        let dateValue = '';
+        
+        // Try to get date from different sources
+        if (typeof value === 'string') {
+          dateValue = value;
+        } else if (value && typeof value === 'object' && value.request_date) {
+          dateValue = value.request_date;
+        } else if (row && typeof row === 'object' && row.request_date) {
+          dateValue = row.request_date;
+        } else {
+          dateValue = String(value || '');
+        }
+        
+        // Handle different date formats
+        let date;
+        if (dateValue.includes('T')) {
+          // ISO format: 2024-01-17T00:00:00.000Z
+          date = new Date(dateValue);
+        } else if (dateValue.includes('-')) {
+          // Date format: 2024-01-17
+          date = new Date(dateValue + 'T00:00:00.000Z');
+        } else {
+          // Try parsing as is
+          date = new Date(dateValue);
+        }
+        
+        const isValidDate = !isNaN(date.getTime());
+        return (
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-gray-500" />
+            <span>{isValidDate ? date.toLocaleDateString('th-TH', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              calendar: 'gregory'
+            }) : 'ไม่ระบุ'}</span>
+          </div>
+        );
+      }
     },
     {
       key: 'status',
       title: 'สถานะ',
       sortable: true,
-      render: (value) => (
-        <Badge 
-          variant={value === 'PENDING' ? 'secondary' : 
-                 value === 'APPROVED' ? 'default' : 'destructive'}
-          className={`px-3 py-1 text-sm font-bold ${
-            value === 'PENDING' 
-              ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white border-0' 
-              : value === 'APPROVED' 
-                ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0'
-                : 'bg-gradient-to-r from-red-500 to-rose-500 text-white border-0'
-          }`}
-        >
-          {value === 'PENDING' ? (
-            <>
-              <Clock className="h-3 w-3 mr-1" />
-              รอการอนุมัติ
-            </>
-          ) : value === 'APPROVED' ? (
-            <>
-              <CheckCircle className="h-3 w-3 mr-1" />
-              อนุมัติแล้ว
-            </>
-          ) : (
-            <>
-              <XCircle className="h-3 w-3 mr-1" />
-              ปฏิเสธ
-            </>
-          )}
-        </Badge>
-      )
+      render: (value, row) => {
+        let status = '';
+        
+        // Try to get status from different sources
+        if (typeof value === 'string') {
+          status = value;
+        } else if (value && typeof value === 'object' && value.status) {
+          status = value.status;
+        } else if (row && typeof row === 'object' && row.status) {
+          status = row.status;
+        } else {
+          status = String(value || '');
+        }
+        
+        // Normalize status
+        status = status.toUpperCase();
+        
+        return (
+          <Badge 
+            variant={status === 'PENDING' ? 'secondary' : 
+                   status === 'APPROVED' ? 'default' : 'destructive'}
+            className={`px-3 py-1 text-sm font-bold ${
+              status === 'PENDING' 
+                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white border-0' 
+                : status === 'APPROVED' 
+                  ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0'
+                  : 'bg-gradient-to-r from-red-500 to-rose-500 text-white border-0'
+            }`}
+          >
+            {status === 'PENDING' ? (
+              <>
+                <Clock className="h-3 w-3 mr-1" />
+                รอการอนุมัติ
+              </>
+            ) : status === 'APPROVED' ? (
+              <>
+                <CheckCircle className="h-3 w-3 mr-1" />
+                อนุมัติแล้ว
+              </>
+            ) : (
+              <>
+                <XCircle className="h-3 w-3 mr-1" />
+                ปฏิเสธ
+              </>
+            )}
+          </Badge>
+        );
+      }
     },
     {
       key: 'actions',
@@ -433,7 +538,7 @@ const ApprovalPage: React.FC = () => {
             className="h-8 px-3"
           >
             <Eye className="h-4 w-4 mr-1" />
-            {row.status === 'PENDING' ? 'พิจารณา' : 'ดู'}
+            พิจารณา
           </Button>
           <Button
             size="sm"
@@ -452,17 +557,60 @@ const ApprovalPage: React.FC = () => {
   const fetchPendingRequests = async () => {
     try {
       setIsLoading(true);
+      console.log('🔄 กำลังดึงข้อมูลคำขอใช้งบประมาณ...');
+      
+      // เพิ่มการตรวจสอบ Firebase connection
       const { firestoreService } = await import('@/lib/firestoreService');
+      
+      // ตรวจสอบว่า Firebase ทำงานหรือไม่
+      if (!firestoreService) {
+        throw new Error('Firebase service not available');
+      }
+      
       const requests = await firestoreService.getBudgetRequests();
+      console.log('📊 ข้อมูลที่ได้รับ:', requests.length, 'รายการ');
+      console.log('📋 รายการคำขอ:', requests);
+      
+      // ตรวจสอบว่าข้อมูลเป็น array หรือไม่
+      if (!Array.isArray(requests)) {
+        console.warn('⚠️ ข้อมูลที่ได้รับไม่ใช่ array:', typeof requests);
+        setAllRequests([]);
+        setPendingRequests([]);
+        return;
+      }
+      
       setAllRequests(requests);
       const pending = requests.filter(req => req.status === 'PENDING');
+      console.log('⏳ คำขอที่รอการอนุมัติ:', pending.length, 'รายการ');
       setPendingRequests(pending);
+      
+      // แสดงข้อความเมื่อไม่มีข้อมูล
+      if (requests.length === 0) {
+        console.log('📭 ไม่พบข้อมูลคำขอใช้งบประมาณ');
+      }
     } catch (err) {
-      console.error('Error fetching pending requests:', err);
-      // Don't show error message for connection issues
+      console.error('❌ ข้อผิดพลาดในการดึงข้อมูล:', err);
+      console.error('❌ Error details:', {
+        message: err instanceof Error ? err.message : 'Unknown error',
+        stack: err instanceof Error ? err.stack : undefined,
+        name: err instanceof Error ? err.name : undefined
+      });
+      
       setAllRequests([]);
       setPendingRequests([]);
-      if (err instanceof Error && !err.message.includes('Failed to fetch') && !err.message.includes('NetworkError')) {
+      
+      // แสดง error message ที่ชัดเจนขึ้น
+      if (err instanceof Error) {
+        if (err.message.includes('Failed to fetch')) {
+          setError('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต');
+        } else if (err.message.includes('NetworkError')) {
+          setError('เกิดข้อผิดพลาดเครือข่าย กรุณาลองใหม่อีกครั้ง');
+        } else if (err.message.includes('Firebase service not available')) {
+          setError('Firebase service ไม่พร้อมใช้งาน กรุณารีเฟรชหน้า');
+        } else {
+          setError(`ไม่สามารถโหลดรายการคำขอได้: ${err.message}`);
+        }
+      } else {
         setError('ไม่สามารถโหลดรายการคำขอได้');
       }
     } finally {
@@ -473,10 +621,21 @@ const ApprovalPage: React.FC = () => {
   const fetchBudgetRequest = async (id: string) => {
     try {
       setIsLoading(true);
-      console.log('Fetching budget request with ID:', id);
+      setError(null);
+      console.log('🔍 Fetching budget request with ID:', id);
+      
       const { firestoreService } = await import('@/lib/firestoreService');
+      console.log('📦 FirestoreService loaded:', !!firestoreService);
+      
       const request = await firestoreService.getBudgetRequest(id);
-      console.log('Received budget request:', request);
+      console.log('📊 Received budget request:', request);
+      
+      if (!request) {
+        console.warn('⚠️ No budget request found for ID:', id);
+        setError('ไม่พบข้อมูลคำขอใช้งบประมาณ');
+        return;
+      }
+      
       setBudgetRequest(request);
       
       // Fetch approval info if not pending
@@ -489,43 +648,18 @@ const ApprovalPage: React.FC = () => {
         }
       }
     } catch (err) {
-      console.error('Error fetching budget request:', err);
-      setError('ไม่สามารถโหลดข้อมูลคำขอได้');
+      console.error('❌ Error fetching budget request:', err);
+      console.error('❌ Error details:', {
+        message: err instanceof Error ? err.message : 'Unknown error',
+        stack: err instanceof Error ? err.stack : undefined,
+        name: err instanceof Error ? err.name : undefined
+      });
+      setError(`ไม่สามารถโหลดข้อมูลคำขอได้: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Filter and search functions - Only show PENDING requests
-  const getFilteredRequests = () => {
-    // Only show PENDING requests
-    let filtered = allRequests.filter(req => req.status === 'PENDING');
-
-    // Search filter
-    if (searchTerm) {
-      filtered = filtered.filter(req => 
-        req.request_no.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        req.requester.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        req.account_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (req.account_name && req.account_name.toLowerCase().includes(searchTerm.toLowerCase()))
-      );
-    }
-
-    // Amount filter
-    if (amountFilter !== 'ALL') {
-      filtered = filtered.filter(req => {
-        const amount = parseFloat(req.amount.toString());
-        switch (amountFilter) {
-          case 'LOW': return amount < 10000;
-          case 'MEDIUM': return amount >= 10000 && amount < 50000;
-          case 'HIGH': return amount >= 50000;
-          default: return true;
-        }
-      });
-    }
-
-    return filtered;
-  };
 
   const getStatusStats = () => {
     const pending = allRequests.filter(req => req.status === 'PENDING').length;
@@ -538,12 +672,74 @@ const ApprovalPage: React.FC = () => {
     return { pending, approved, rejected, totalAmount };
   };
 
-  const handleApprove = () => {
-    setShowApprovalDialog(true);
+  const handleApprove = async (requestId?: string) => {
+    if (requestId) {
+      // Single request approval
+      try {
+        // Check if already approved
+        const currentStatus = String(budgetRequest?.status || '').toUpperCase();
+        if (currentStatus === 'APPROVED') {
+          alert('คำขอนี้ได้รับการอนุมัติแล้ว');
+          return;
+        }
+
+        const confirmed = window.confirm('คุณต้องการอนุมัติคำขอนี้หรือไม่?');
+        if (!confirmed) return;
+
+        const { firestoreService } = await import('@/lib/firestoreService');
+        await firestoreService.updateBudgetRequestStatus(requestId, 'APPROVED', currentUser?.name || currentUser?.email || 'ผู้อนุมัติ');
+        
+        // Refresh the budget request data
+        await fetchBudgetRequest(requestId);
+        
+        // Show success message
+        alert('อนุมัติคำขอเรียบร้อยแล้ว');
+        
+        // Navigate back to approval page
+        navigate('/approval');
+      } catch (error) {
+        console.error('Error approving request:', error);
+        alert('เกิดข้อผิดพลาดในการอนุมัติคำขอ');
+      }
+    } else {
+      // Multiple requests approval
+      setShowApprovalDialog(true);
+    }
   };
 
-  const handleReject = () => {
-    setShowRejectDialog(true);
+  const handleReject = async (requestId?: string) => {
+    if (requestId) {
+      // Single request rejection
+      try {
+        // Check if already rejected
+        const currentStatus = String(budgetRequest?.status || '').toUpperCase();
+        if (currentStatus === 'REJECTED') {
+          alert('คำขอนี้ถูกปฏิเสธแล้ว');
+          return;
+        }
+
+        const confirmed = window.confirm('คุณต้องการไม่อนุมัติคำขอนี้หรือไม่?');
+        if (!confirmed) return;
+
+        const { firestoreService } = await import('@/lib/firestoreService');
+        await firestoreService.updateBudgetRequestStatus(requestId, 'REJECTED', currentUser?.name || currentUser?.email || 'ผู้อนุมัติ');
+        
+        // Refresh the budget request data
+        await fetchBudgetRequest(requestId);
+        
+        // Show success message
+        alert('ไม่อนุมัติคำขอเรียบร้อยแล้ว');
+        
+        // Navigate back to approval page
+        navigate('/approval');
+      } catch (error) {
+        console.error('Error rejecting request:', error);
+        alert('เกิดข้อผิดพลาดในการไม่อนุมัติคำขอ');
+      }
+    } else {
+      // Multiple requests rejection
+      setShowRejectDialog(true);
+    }
   };
 
   const sendApprovalNotification = async (requestData: DBBudgetRequest, decision: 'APPROVED' | 'REJECTED', approverName: string, remark: string) => {
@@ -696,17 +892,49 @@ ${remark ? `หมายเหตุจากผู้อนุมัติ: ${r
     try {
       setIsLoading(true);
       
-      // Get approver name from current context or settings
+      // ใช้ชื่อผู้ใช้ปัจจุบันที่มีบทบาท manager แทนการดึงจาก Settings
       let approverName = 'ผู้บริหาร'; // Default fallback
-      try {
-        const settingsResponse = await fetch('/api/settings');
-        if (settingsResponse.ok) {
-          const settings = await settingsResponse.json();
-          approverName = settings.approverName || approverName;
+      
+      console.log('🔍 Current User Data:', {
+        displayName: currentUser?.displayName,
+        role: currentUser?.role,
+        email: currentUser?.email
+      });
+      
+      // ตรวจสอบว่าผู้ใช้ปัจจุบันเป็น manager หรือไม่
+      if (currentUser && currentUser.role === 'manager') {
+        // ตรวจสอบว่า displayName เป็น email หรือไม่
+        if (currentUser.displayName && !currentUser.displayName.includes('@')) {
+          approverName = currentUser.displayName;
+          console.log('✅ ใช้ชื่อจริงจาก displayName:', approverName);
+        } else {
+          // หาก displayName เป็น email หรือ null ให้ใช้ชื่อจาก email
+          const emailName = currentUser.email?.split('@')[0] || 'ผู้จัดการศูนย์';
+          approverName = emailName;
+          console.log('⚠️ displayName เป็น email ใช้ชื่อจาก email:', approverName);
         }
-      } catch (error) {
-        console.log('Using default approver name:', approverName);
+      } else {
+        // หากไม่ใช่ manager ให้ลองดึงจาก Settings
+        try {
+          const settingsResponse = await fetch('/api/settings');
+          if (settingsResponse.ok) {
+            const settings = await settingsResponse.json();
+            approverName = settings.approverName || approverName;
+            console.log('✅ ใช้ชื่อจาก Settings:', approverName);
+          }
+        } catch (error) {
+          console.log('Using default approver name:', approverName);
+        }
       }
+      
+      // ตรวจสอบว่าเป็น email หรือไม่
+      if (approverName.includes('@')) {
+        const emailName = approverName.split('@')[0];
+        approverName = emailName;
+        console.log('⚠️ ตรวจพบ email เปลี่ยนเป็นชื่อ:', approverName);
+      }
+      
+      console.log('📋 ชื่อผู้อนุมัติที่ใช้:', approverName);
 
       // Update budget request with approval info
       const { firestoreService } = await import('@/lib/firestoreService');
@@ -714,6 +942,7 @@ ${remark ? `หมายเหตุจากผู้อนุมัติ: ${r
         ...budgetRequest,
         status: 'APPROVED',
         approved_by: approverName,
+        approver_name: approverName, // เพิ่มเพื่อความสอดคล้อง
         approved_at: new Date().toISOString()
       });
 
@@ -747,17 +976,49 @@ ${remark ? `หมายเหตุจากผู้อนุมัติ: ${r
     try {
       setIsLoading(true);
       
-      // Get approver name from current context or settings
+      // ใช้ชื่อผู้ใช้ปัจจุบันที่มีบทบาท manager แทนการดึงจาก Settings
       let approverName = 'ผู้บริหาร'; // Default fallback
-      try {
-        const settingsResponse = await fetch('/api/settings');
-        if (settingsResponse.ok) {
-          const settings = await settingsResponse.json();
-          approverName = settings.approverName || approverName;
+      
+      console.log('🔍 Current User Data (Reject):', {
+        displayName: currentUser?.displayName,
+        role: currentUser?.role,
+        email: currentUser?.email
+      });
+      
+      // ตรวจสอบว่าผู้ใช้ปัจจุบันเป็น manager หรือไม่
+      if (currentUser && currentUser.role === 'manager') {
+        // ตรวจสอบว่า displayName เป็น email หรือไม่
+        if (currentUser.displayName && !currentUser.displayName.includes('@')) {
+          approverName = currentUser.displayName;
+          console.log('✅ ใช้ชื่อจริงจาก displayName (Reject):', approverName);
+        } else {
+          // หาก displayName เป็น email หรือ null ให้ใช้ชื่อจาก email
+          const emailName = currentUser.email?.split('@')[0] || 'ผู้จัดการศูนย์';
+          approverName = emailName;
+          console.log('⚠️ displayName เป็น email ใช้ชื่อจาก email (Reject):', approverName);
         }
-      } catch (error) {
-        console.log('Using default approver name:', approverName);
+      } else {
+        // หากไม่ใช่ manager ให้ลองดึงจาก Settings
+        try {
+          const settingsResponse = await fetch('/api/settings');
+          if (settingsResponse.ok) {
+            const settings = await settingsResponse.json();
+            approverName = settings.approverName || approverName;
+            console.log('✅ ใช้ชื่อจาก Settings (Reject):', approverName);
+          }
+        } catch (error) {
+          console.log('Using default approver name (Reject):', approverName);
+        }
       }
+      
+      // ตรวจสอบว่าเป็น email หรือไม่
+      if (approverName.includes('@')) {
+        const emailName = approverName.split('@')[0];
+        approverName = emailName;
+        console.log('⚠️ ตรวจพบ email เปลี่ยนเป็นชื่อ (Reject):', approverName);
+      }
+      
+      console.log('📋 ชื่อผู้อนุมัติที่ใช้ (Reject):', approverName);
 
       // Update budget request with rejection info
       const { firestoreService } = await import('@/lib/firestoreService');
@@ -765,6 +1026,7 @@ ${remark ? `หมายเหตุจากผู้อนุมัติ: ${r
         ...budgetRequest,
         status: 'REJECTED',
         approved_by: approverName,
+        approver_name: approverName, // เพิ่มเพื่อความสอดคล้อง
         approved_at: new Date().toISOString()
       });
 
@@ -793,24 +1055,13 @@ ${remark ? `หมายเหตุจากผู้อนุมัติ: ${r
   };
 
   const handlePrint = async (request: DBBudgetRequest) => {
-    let approvalInfo: ApprovalInfo | null = null;
-    if (request.status !== 'PENDING') {
-        try {
-          const { firestoreService } = await import('@/lib/firestoreService');
-          const data = await firestoreService.getApprovalByRequestId(request.id.toString());
-          approvalInfo = data;
-        } catch (err) {
-          console.error('Error fetching approval data for print:', err);
-        }
-    }
-
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
     const itemsTable = request.material_list?.length
-      ? `<table style="width:100%;border-collapse:collapse;margin:20px 0;font-size:12px;"><thead><tr style="background-color:#f1f1f1;"><th style="border:1px solid #ddd;padding:10px;text-align:center;">รายการ</th><th style="border:1px solid #ddd;padding:10px;text-align:center;">จำนวน</th></tr></thead><tbody>${request.material_list
+      ? `<table style="width:100%;border-collapse:collapse;margin:20px 0;font-size:12px;"><thead><tr style="background-color:#f1f1f1;"><th style="border:1px solid #ddd;padding:10px;text-align:center;">ลำดับที่</th><th style="border:1px solid #ddd;padding:10px;text-align:center;">รายการ</th><th style="border:1px solid #ddd;padding:10px;text-align:center;">จำนวน</th></tr></thead><tbody>${request.material_list
           .map(
-            (item, idx) => `<tr><td style="border:1px solid #ddd;padding:10px;">${item.item}</td><td style="border:1px solid #ddd;padding:10px;text-align:center;">${item.quantity}</td></tr>`
+            (item, idx) => `<tr><td style="border:1px solid #ddd;padding:10px;text-align:center;">${idx + 1}</td><td style="border:1px solid #ddd;padding:10px;">${item.name || item.item || '-'}</td><td style="border:1px solid #ddd;padding:10px;text-align:center;">${item.quantity || '-'} ${item.unit || ''}</td></tr>`
           )
           .join('')}</tbody></table>`
       : `<p style="text-align:center;color:#666;font-size:12px;margin:20px 0;">ไม่มีรายการวัสดุ</p>`;
@@ -919,7 +1170,7 @@ ${remark ? `หมายเหตุจากผู้อนุมัติ: ${r
       <strong>ศูนย์จัดการธนบัตร นครราชสีมา</strong><br>
       สำนักงานธนาคารแห่งประเทศไทย
     </div>
-    <div class="print-title">แบบฟอร์มขออนุมัติจัดซื้อ</div>
+    <div class="print-title"></div>
     <div class="print-code">
       <strong>รหัสคำขอ:</strong> ${request.request_no}<br>
       <strong>วันที่:</strong> ${new Date(request.request_date).toLocaleDateString('th-TH')}
@@ -942,7 +1193,7 @@ ${remark ? `หมายเหตุจากผู้อนุมัติ: ${r
   </div>
   
   <div class="memo-to">
-    <strong>เรื่อง</strong> ขออนุมัติใช้งบประมาณจัดซื้อวัสดุสำนักงาน<br>
+    <strong>เรื่อง</strong> ขออนุมัติใช้งบประมาณจัดซื้อ (${request.account_name || ''})<br>
     <strong>เรียน</strong> ผู้จัดการศูนย์ ศูนย์จัดการธนบัตร นครราชสีมา
   </div>
   
@@ -951,7 +1202,7 @@ ${remark ? `หมายเหตุจากผู้อนุมัติ: ${r
       งานธุรการ ขอใช้งบประมาณจำนวน <strong>${parseFloat(request.amount.toString()).toLocaleString('th-TH')} บาท</strong> 
       (<u>${convertToThaiText(parseFloat(request.amount.toString()))}</u>) 
       จากรหัสบัญชี <strong>${request.account_code}</strong>${request.account_name ? ` (${request.account_name})` : ''}
-      เพื่อซื้อ <strong>วัสดุสำนักงาน</strong> ตามรายการดังต่อไปนี้
+      ตามรายการดังต่อไปนี้
     </p>
     
     ${itemsTable}
@@ -961,31 +1212,32 @@ ${remark ? `หมายเหตุจากผู้อนุมัติ: ${r
     </p>
   </div>
   
-  ${approvalInfo ? `
   <div class="approval-section">
     <div class="memo-signature">
       <div style="margin-bottom: 60px; text-align: center;">
-        (${approvalInfo.approver_name})<br>
-        ตำแหน่ง ผู้จัดการศูนย์
-      </div>
-      <div class="center-text">
-        วันที่อนุมัติ ${new Date(approvalInfo.created_at).toLocaleDateString('th-TH')}
-      </div>
-    </div>
-  </div>
-  ` : `
-  <div class="approval-section">
-    <div class="memo-signature">
-      <div style="margin-bottom: 60px; text-align: center;">
+        (ลงชื่อ) ................................................<br>
         (${request.requester})<br>
         ตำแหน่ง เจ้าหน้าที่งานบริหารธนบัตรอาวุโส (ควบ)
       </div>
       <div class="center-text">
-        วันที่อนุมัติ...../...../.......
+        ${request.status === 'APPROVED' || request.status === 'REJECTED' 
+          ? `วันที่อนุมัติ: ${request.approved_at ? new Date(request.approved_at).toLocaleDateString('th-TH', {
+              year: 'numeric',
+              month: '2-digit', 
+              day: '2-digit',
+              calendar: 'gregory'
+            }) : 'ไม่ระบุ'}`
+          : 'วันที่อนุมัติ...../...../.......'
+        }
       </div>
+      ${request.status === 'APPROVED' || request.status === 'REJECTED' 
+        ? `<div class="center-text" style="margin-top: 10px;">
+             ผู้อนุมัติ: ${request.approver_name || 'ไม่ระบุ'}
+           </div>`
+        : ''
+      }
     </div>
   </div>
-  `}
 </body>
 </html>`;
 
@@ -1002,6 +1254,305 @@ ${remark ? `หมายเหตุจากผู้อนุมัติ: ${r
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
             <p className="text-gray-600">กำลังโหลดข้อมูล...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  // Show error when there's an error loading the request
+  if (request_id && error) {
+    return (
+      <Layout>
+        <div className="max-w-7xl mx-auto p-6">
+          <Button
+            variant="outline"
+            onClick={() => navigate('/approval')}
+            className="mb-4"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            กลับ
+          </Button>
+          
+          <Card>
+            <CardContent className="text-center py-12">
+              <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+              <h2 className="text-xl font-semibold text-gray-800 mb-2">เกิดข้อผิดพลาด</h2>
+              <p className="text-gray-600 mb-4">{error}</p>
+              <div className="space-y-2">
+                <Button onClick={() => window.location.reload()}>
+                  รีเฟรชหน้า
+                </Button>
+                <Button variant="outline" onClick={() => navigate('/approval')}>
+                  กลับไปหน้ารายการ
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </Layout>
+    );
+  }
+
+  // Show detail view when request_id is provided
+  if (request_id && budgetRequest) {
+    return (
+      <Layout>
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-cyan-50">
+          <div className="max-w-7xl mx-auto p-6">
+            {/* Back Button */}
+            <Button
+              variant="outline"
+              onClick={() => navigate('/approval')}
+              className="mb-6 bg-white/80 backdrop-blur-sm border-blue-200 hover:bg-blue-50"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              กลับ
+            </Button>
+            
+            {/* Modern Modal Design */}
+            <div className="bg-white rounded-3xl shadow-2xl border border-gray-200 overflow-hidden">
+              {/* Header Section */}
+              <div className="bg-gradient-to-r from-blue-600 via-cyan-600 to-teal-600 p-8 text-white">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm">
+                      <FileText className="h-8 w-8" />
+                    </div>
+                    <div>
+                      <h1 className="text-3xl font-bold">คำขออนุมัติใช้งบประมาณ</h1>
+                      <p className="text-blue-100 text-lg">รหัสคำขอ: {budgetRequest.request_no}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm text-blue-100 mb-1">วันที่ขอ</div>
+                    <div className="text-lg font-semibold">
+                      {new Date(budgetRequest.request_date).toLocaleDateString('th-TH', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Content Section */}
+              <div className="p-8">
+                {/* Status and Basic Info */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                  {/* Status Card */}
+                  <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl p-6 border border-orange-200">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <div className="p-2 bg-orange-100 rounded-xl">
+                        <Clock className="h-5 w-5 text-orange-600" />
+                      </div>
+                      <div>
+                        <div className="text-sm text-orange-600 font-medium">สถานะ</div>
+                        <div className="text-lg font-bold text-orange-800">
+                          {String(budgetRequest.status).toUpperCase() === 'PENDING' ? 'รอการอนุมัติ' : 
+                           String(budgetRequest.status).toUpperCase() === 'APPROVED' ? 'อนุมัติแล้ว' : 'ปฏิเสธ'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Amount Card */}
+                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border border-green-200">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <div className="p-2 bg-green-100 rounded-xl">
+                        <DollarSign className="h-5 w-5 text-green-600" />
+                      </div>
+                      <div>
+                        <div className="text-sm text-green-600 font-medium">จำนวนเงิน</div>
+                        <div className="text-lg font-bold text-green-800">
+                          ฿{parseFloat(budgetRequest.amount.toString()).toLocaleString('th-TH')}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Requester Card */}
+                  <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-6 border border-purple-200">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <div className="p-2 bg-purple-100 rounded-xl">
+                        <User className="h-5 w-5 text-purple-600" />
+                      </div>
+                      <div>
+                        <div className="text-sm text-purple-600 font-medium">ผู้ขอ</div>
+                        <div className="text-lg font-bold text-purple-800">{budgetRequest.requester}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Approver Info - Only show if approved/rejected */}
+                {(budgetRequest.status === 'APPROVED' || budgetRequest.status === 'REJECTED') && (
+                  <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-2xl p-6 border border-indigo-200 mb-8">
+                    <div className="flex items-center space-x-3">
+                      <div className="p-2 bg-indigo-100 rounded-xl">
+                        <CheckCircle className="h-5 w-5 text-indigo-600" />
+                      </div>
+                      <div>
+                        <div className="text-sm text-indigo-600 font-medium mb-1">ผู้อนุมัติ</div>
+                        <div className="text-lg font-bold text-indigo-800">
+                          {budgetRequest.approved_by && !budgetRequest.approved_by.includes('@') 
+                            ? budgetRequest.approved_by 
+                            : budgetRequest.approver_name || 'ผู้จัดการศูนย์'}
+                        </div>
+                        {budgetRequest.approved_at && (
+                          <div className="text-sm text-indigo-600 mt-1">
+                            วันที่: {new Date(budgetRequest.approved_at).toLocaleDateString('th-TH', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Document Content */}
+                <div className="bg-gradient-to-br from-gray-50 to-slate-50 rounded-2xl p-8 border border-gray-200">
+                  <div className="text-center mb-8">
+                    <h2 className="text-2xl font-bold text-gray-800 mb-2">บันทึกขออนุมัติใช้งบประมาณ</h2>
+                    <div className="w-24 h-1 bg-gradient-to-r from-blue-500 to-cyan-500 mx-auto rounded-full"></div>
+                  </div>
+
+                  {/* Organization Info */}
+                  <div className="space-y-4 mb-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-white p-4 rounded-xl border border-gray-200">
+                        <div className="text-sm text-gray-600 mb-1">ส่วนงาน</div>
+                        <div className="font-semibold text-gray-800">ศูนย์จัดการธนบัตร นครราชสีมา</div>
+                      </div>
+                      <div className="bg-white p-4 rounded-xl border border-gray-200">
+                        <div className="text-sm text-gray-600 mb-1">รหัสบัญชี</div>
+                        <div className="font-semibold text-gray-800">
+                          {budgetRequest.account_code} {budgetRequest.account_name && `(${budgetRequest.account_name})`}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Request Content */}
+                  <div className="bg-white p-6 rounded-xl border border-gray-200 mb-6">
+                    <p className="text-justify leading-relaxed text-gray-700">
+                      งานธุรการ ขอใช้งบประมาณจำนวน <span className="font-bold text-blue-600 text-lg">
+                        {parseFloat(budgetRequest.amount.toString()).toLocaleString('th-TH')} บาท
+                      </span> 
+                      (<span className="text-green-600 font-medium">{convertToThaiText(parseFloat(budgetRequest.amount.toString()))}</span>) 
+                      จากรหัสบัญชี <span className="font-bold text-purple-600">{budgetRequest.account_code}</span>
+                      {budgetRequest.account_name && <span className="text-gray-600"> ({budgetRequest.account_name})</span>}
+                      ตามรายการดังต่อไปนี้
+                    </p>
+                  </div>
+
+                  {/* Material List */}
+                  {budgetRequest.material_list && budgetRequest.material_list.length > 0 ? (
+                    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+                      <div className="bg-gradient-to-r from-gray-100 to-slate-100 px-6 py-4 border-b border-gray-200">
+                        <h3 className="text-lg font-semibold text-gray-800">รายการวัสดุ</h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600 border-b border-gray-200">ลำดับ</th>
+                              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600 border-b border-gray-200">รายการ</th>
+                              <th className="px-6 py-4 text-center text-sm font-semibold text-gray-600 border-b border-gray-200">จำนวน</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {budgetRequest.material_list.map((item: any, idx: number) => (
+                              <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+                                <td className="px-6 py-4 text-center text-gray-600 font-medium">{idx + 1}</td>
+                                <td className="px-6 py-4 text-gray-800">{item.name || '-'}</td>
+                                <td className="px-6 py-4 text-center text-gray-600">{item.quantity || '-'} {item.unit || ''}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-xl border-2 border-dashed border-gray-300 p-8 text-center mb-6">
+                      <Package className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                      <p className="text-gray-500 text-lg">ไม่มีรายการวัสดุ</p>
+                    </div>
+                  )}
+
+                  {/* Closing Statement */}
+                  <div className="bg-white p-6 rounded-xl border border-gray-200">
+                    <p className="text-justify text-gray-700 font-medium">
+                      จึงเรียนมาเพื่อโปรดพิจารณาอนุมัติ
+                    </p>
+                  </div>
+                </div>
+
+                {/* Action Buttons - Only show for PENDING status */}
+                {String(budgetRequest.status).toUpperCase() === 'PENDING' && (
+                  <div className="mt-8 flex justify-center space-x-4">
+                    <Button
+                      onClick={() => handleApprove(budgetRequest.id)}
+                      className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-4 px-8 rounded-2xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300"
+                    >
+                      <CheckCircle className="h-5 w-5 mr-2" />
+                      อนุมัติ
+                    </Button>
+                    <Button
+                      onClick={() => handleReject(budgetRequest.id)}
+                      className="bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-bold py-4 px-8 rounded-2xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300"
+                    >
+                      <XCircle className="h-5 w-5 mr-2" />
+                      ปฏิเสธ
+                    </Button>
+                  </div>
+                )}
+
+                {/* Signature Section */}
+                <div className="mt-8 bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl p-8 border border-gray-200">
+                  <div className="flex justify-between items-end">
+                    {/* Requester Signature */}
+                    <div className="text-center">
+                      <div className="mb-8">
+                        <div className="h-16 border-b-2 border-gray-400 mb-2"></div>
+                        <div className="text-sm text-gray-600">(ลงชื่อ) ................................................</div>
+                        <div className="text-sm font-semibold text-gray-800">({budgetRequest.requester})</div>
+                        <div className="text-sm text-gray-600">ตำแหน่ง เจ้าหน้าที่งานบริหารธนบัตรอาวุโส (ควบ)</div>
+                      </div>
+                    </div>
+                    
+                    {/* Approver Signature */}
+                    {budgetRequest.status !== 'PENDING' && (
+                      <div className="text-center">
+                        <div className="mb-8">
+                          <div className="h-16 border-b-2 border-gray-400 mb-2"></div>
+                          <div className="text-sm text-gray-600">ผู้อนุมัติ</div>
+                          <div className="text-sm font-semibold text-gray-800">
+                            ({budgetRequest.approved_by && !budgetRequest.approved_by.includes('@') 
+                              ? budgetRequest.approved_by 
+                              : budgetRequest.approver_name || 'ผู้จัดการศูนย์'})
+                          </div>
+                          <div className="text-sm text-gray-600">ตำแหน่ง ผู้จัดการศูนย์ ศูนย์จัดการธนบัตร นครราชสีมา</div>
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          วันที่อนุมัติ: {budgetRequest.approved_at ? 
+                            new Date(budgetRequest.approved_at).toLocaleDateString('th-TH', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
+                            }) : '...../...../.......'
+                          }
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </Layout>
@@ -1037,6 +1588,108 @@ ${remark ? `หมายเหตุจากผู้อนุมัติ: ${r
             </div>
           </div>
         </Layout>
+      );
+    }
+
+    // Show message when no requests found
+    if (allRequests.length === 0) {
+      return (
+        <ProductsStylePageLayout>
+          <ProductsStylePageHeader
+            title="การอนุมัติใช้งบประมาณ"
+            description="จัดการการอนุมัติคำขอใช้งบประมาณ"
+            showBackButton={false}
+            actions={
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchPendingRequests()}
+                  disabled={isLoading}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                  รีเฟรช
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate('/budget-request')}
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  สร้างคำขอใหม่
+                </Button>
+              </div>
+            }
+          />
+          
+          <div className="space-y-6">
+            {/* Stats Cards */}
+            <ProductsStyleStatsCards
+              stats={[
+                {
+                  title: 'รอการอนุมัติ',
+                  value: pendingRequests.length.toString(),
+                  change: '0%',
+                  trend: 'neutral',
+                  icon: <Clock className="h-6 w-6" />,
+                  color: 'yellow'
+                },
+                {
+                  title: 'อนุมัติแล้ว',
+                  value: allRequests.filter(r => r.status === 'APPROVED').length.toString(),
+                  change: '0%',
+                  trend: 'up',
+                  icon: <CheckCircle className="h-6 w-6" />,
+                  color: 'green'
+                },
+                {
+                  title: 'ปฏิเสธแล้ว',
+                  value: allRequests.filter(r => r.status === 'REJECTED').length.toString(),
+                  change: '0%',
+                  trend: 'down',
+                  icon: <XCircle className="h-6 w-6" />,
+                  color: 'red'
+                },
+                {
+                  title: 'ทั้งหมด',
+                  value: allRequests.length.toString(),
+                  change: '0%',
+                  trend: 'neutral',
+                  icon: <FileText className="h-6 w-6" />,
+                  color: 'blue'
+                }
+              ]}
+            />
+
+            {/* Empty State */}
+            <Card className="bg-gradient-to-br from-gray-50 via-white to-slate-50 border-2 border-gray-200 shadow-xl">
+              <CardContent className="p-12 text-center">
+                <div className="p-4 bg-gradient-to-br from-blue-100 to-cyan-100 rounded-full w-20 h-20 mx-auto mb-6 flex items-center justify-center">
+                  <FileText className="h-10 w-10 text-blue-600" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-800 mb-2">ไม่พบคำขออนุมัติ</h3>
+                <p className="text-gray-600 mb-6">ยังไม่มีคำขอใช้งบประมาณที่รอการอนุมัติในระบบ</p>
+                <div className="space-y-2">
+                  <Button 
+                    onClick={() => navigate('/budget-request')}
+                    className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    สร้างคำขอใหม่
+                  </Button>
+                  <Button 
+                    variant="outline"
+                    onClick={() => fetchPendingRequests()}
+                    disabled={isLoading}
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                    รีเฟรชข้อมูล
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </ProductsStylePageLayout>
       );
     }
 
@@ -1512,7 +2165,11 @@ ${remark ? `หมายเหตุจากผู้อนุมัติ: ${r
                     {budgetRequest.status !== 'PENDING' && (
                       <div>
                         <Label className="text-xs font-medium text-gray-500 mb-1 block">ผู้อนุมัติ</Label>
-                        <p className="font-semibold text-gray-800 text-base">{budgetRequest.approved_by || 'ผู้บริหาร'}</p>
+                        <p className="font-semibold text-gray-800 text-base">
+                          {budgetRequest.approved_by && !budgetRequest.approved_by.includes('@') 
+                            ? budgetRequest.approved_by 
+                            : budgetRequest.approver_name || 'ผู้จัดการศูนย์'}
+                        </p>
                       </div>
                     )}
                   </div>
