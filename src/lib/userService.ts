@@ -5,6 +5,9 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  updatePassword,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
   User as FirebaseUser
 } from 'firebase/auth';
 import { 
@@ -22,7 +25,6 @@ import {
   limit
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { toast } from '@/hooks/use-toast';
 
 export interface UserRole {
   id: string;
@@ -36,7 +38,7 @@ export interface User {
   id: string;
   email: string;
   displayName: string;
-  role: 'user' | 'manager' | 'admin';
+  role: 'staff' | 'manager' | 'admin';
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -48,20 +50,20 @@ export interface CreateUserData {
   email: string;
   password: string;
   displayName: string;
-  role: 'user' | 'manager' | 'admin';
+  role: 'staff' | 'manager' | 'admin';
 }
 
 export interface UpdateUserData {
   displayName?: string;
-  role?: 'user' | 'manager' | 'admin';
+  role?: 'staff' | 'manager' | 'admin';
   isActive?: boolean;
 }
 
 // Role definitions
 export const USER_ROLES: UserRole[] = [
   {
-    id: 'user',
-    name: 'ผู้ใช้งาน',
+    id: 'staff',
+    name: 'เจ้าหน้าที่',
     permissions: [
       'products:read',
       'products:create',
@@ -172,10 +174,19 @@ class UserService {
     });
   }
 
-  // Sign in
-  async signIn(email: string, password: string): Promise<User> {
+  // Sign in with retry mechanism
+  async signIn(email: string, password: string, retryCount = 0): Promise<User> {
+    const maxRetries = 3;
+    const retryDelay = 1000; // 1 second
+    
     try {
+      console.log('🔐 Attempting to sign in with email:', email);
+      console.log('🔐 Firebase Auth instance:', this.auth);
+      console.log('🔐 Auth domain:', this.auth.config.authDomain);
+      
       const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
+      console.log('✅ Sign in successful:', userCredential.user.uid);
+      
       const user = await this.getUserById(userCredential.user.uid);
       
       // Update last login
@@ -183,7 +194,38 @@ class UserService {
       
       return user;
     } catch (error: any) {
-      throw new Error(this.getErrorMessage(error.code));
+      console.error('❌ Sign in error:', error);
+      console.error('❌ Error code:', error.code);
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Full error:', error);
+      
+      // Handle network errors with retry
+      if (error.code === 'auth/network-request-failed' && retryCount < maxRetries) {
+        console.log(`🔄 Retrying sign in (attempt ${retryCount + 1}/${maxRetries})...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay * (retryCount + 1)));
+        return this.signIn(email, password, retryCount + 1);
+      }
+      
+      // Handle specific Firebase Auth errors
+      if (error.code === 'auth/invalid-credential') {
+        throw new Error('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+      } else if (error.code === 'auth/user-not-found') {
+        throw new Error('ไม่พบผู้ใช้ในระบบ');
+      } else if (error.code === 'auth/wrong-password') {
+        throw new Error('รหัสผ่านไม่ถูกต้อง');
+      } else if (error.code === 'auth/too-many-requests') {
+        throw new Error('มีการพยายามเข้าสู่ระบบมากเกินไป กรุณารอสักครู่');
+      } else if (error.code === 'auth/network-request-failed') {
+        throw new Error('เกิดข้อผิดพลาดในการเชื่อมต่อเครือข่าย กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต');
+      } else if (error.code === 'auth/user-disabled') {
+        throw new Error('บัญชีผู้ใช้นี้ถูกปิดใช้งาน');
+      } else if (error.code === 'auth/invalid-email') {
+        throw new Error('รูปแบบอีเมลไม่ถูกต้อง');
+      } else if (error.code === 'auth/weak-password') {
+        throw new Error('รหัสผ่านไม่แข็งแรงพอ');
+      } else {
+        throw new Error(this.getErrorMessage(error.code) || `เกิดข้อผิดพลาด: ${error.message}`);
+      }
     }
   }
 
@@ -233,12 +275,26 @@ class UserService {
   // Get user by ID
   async getUserById(userId: string): Promise<User> {
     try {
+      console.log('🔍 getUserById called with userId:', userId);
+      console.log('🔍 Database instance:', this.db);
+      
       const userDoc = await getDoc(doc(this.db, 'users', userId));
+      console.log('🔍 User document exists:', userDoc.exists());
+      
       if (!userDoc.exists()) {
+        console.log('❌ User document does not exist');
         throw new Error('ไม่พบข้อมูลผู้ใช้');
       }
-      return userDoc.data() as User;
+      
+      const userData = userDoc.data() as User;
+      console.log('🔍 User data retrieved:', userData);
+      console.log('🔍 User role:', userData.role);
+      console.log('🔍 User displayName:', userData.displayName);
+      
+      return userData;
     } catch (error: any) {
+      console.error('❌ Error in getUserById:', error);
+      console.error('❌ Error message:', error.message);
       throw new Error('ไม่สามารถดึงข้อมูลผู้ใช้ได้');
     }
   }
@@ -348,6 +404,35 @@ class UserService {
     };
     
     return errorMessages[errorCode] || 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ';
+  }
+
+  /**
+   * Change user password
+   */
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    const user = auth.currentUser;
+    
+    if (!user) {
+      throw new Error('ไม่มีผู้ใช้ที่เข้าสู่ระบบ');
+    }
+
+    if (!user.email) {
+      throw new Error('ไม่พบอีเมลของผู้ใช้');
+    }
+
+    try {
+      // Re-authenticate user with current password
+      const credential = EmailAuthProvider.credential(user.email, currentPassword);
+      await reauthenticateWithCredential(user, credential);
+      
+      // Update password
+      await updatePassword(user, newPassword);
+      
+      console.log('Password changed successfully');
+    } catch (error: any) {
+      console.error('Error changing password:', error);
+      throw error;
+    }
   }
 }
 

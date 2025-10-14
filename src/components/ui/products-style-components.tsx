@@ -32,8 +32,8 @@ import {
   ArrowUp,
   ArrowDown
 } from 'lucide-react';
-import { GlobalSearch } from '@/components/Search/GlobalSearch';
 import { BarcodeScannerIndicator } from '@/components/ui/barcode-scanner-indicator';
+import { StatsCardsSkeleton } from '@/components/ui/loading-skeleton';
 
 // Types
 export interface StatCard {
@@ -74,6 +74,7 @@ export interface PageHeaderProps {
 export interface StatsCardsProps {
   cards?: StatCard[];
   stats?: StatCard[]; // Support both prop names for backward compatibility
+  loading?: boolean;
 }
 
 export interface BulkActionsBarProps {
@@ -187,14 +188,14 @@ export function ProductsStylePageHeader({
           
           {/* Right Side - Search and Action Buttons */}
           <div className="flex items-center gap-3">
-            {/* Global Search */}
+            {/* Search Input */}
             <div className="w-80">
-              <GlobalSearch 
-                className="w-full" 
+              <input
+                type="text"
                 placeholder={searchPlaceholder}
-                showFilters={true}
                 value={searchValue}
-                onChange={onSearchChange}
+                onChange={(e) => onSearchChange?.(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             
@@ -250,9 +251,14 @@ export function ProductsStylePageHeader({
 }
 
 // Stats Cards Component
-export function ProductsStyleStatsCards({ cards, stats }: StatsCardsProps) {
+export function ProductsStyleStatsCards({ cards, stats, loading }: StatsCardsProps) {
   // Support both prop names for backward compatibility
   const cardsData = cards || stats || [];
+  
+  // Show loading skeleton when loading
+  if (loading) {
+    return <StatsCardsSkeleton />;
+  }
   
   // Early return if no data
   if (!cardsData || cardsData.length === 0) {

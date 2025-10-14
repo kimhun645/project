@@ -1,224 +1,332 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { 
-  User, 
-  Shield, 
-  Crown, 
-  CheckCircle,
-  XCircle,
-  Info
-} from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
-import { userService, UserRole } from '@/lib/userService';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
+import { Shield, Eye, Plus, Edit, Trash2, Check, X, Download, User, Settings, Save } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
-interface RoleManagementProps {
-  currentUserRole: string;
-}
+export function RoleManagement() {
+  const [selectedRole, setSelectedRole] = useState<string>('admin');
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    name: '',
+    description: '',
+    permissions: [] as string[]
+  });
+  const { toast } = useToast();
 
-export function RoleManagement({ currentUserRole }: RoleManagementProps) {
-  const { hasPermission } = useAuth();
-  const roles = userService.getAllRoles();
-
-  const getRoleIcon = (roleId: string) => {
-    switch (roleId) {
-      case 'admin': return <Crown className="h-6 w-6" />;
-      case 'manager': return <Shield className="h-6 w-6" />;
-      default: return <User className="h-6 w-6" />;
+  // Role definitions with permissions
+  const roleData = {
+    staff: {
+      name: 'เจ้าหน้าที่',
+      description: 'สามารถใช้งานระบบได้ทุกฟีเจอร์ ยกเว้นการอนุมัติและตั้งค่าระบบ',
+      color: 'blue',
+      permissions: [
+        { category: 'สินค้า', actions: ['read', 'create', 'update'] },
+        { category: 'หมวดหมู่', actions: ['read', 'create', 'update'] },
+        { category: 'ผู้จำหน่าย', actions: ['read', 'create', 'update'] },
+        { category: 'การเคลื่อนไหว', actions: ['read', 'create', 'update'] },
+        { category: 'รายงาน', actions: ['read'] },
+        { category: 'งบประมาณ', actions: ['read', 'create', 'update'] }
+      ]
+    },
+    manager: {
+      name: 'ผู้จัดการศูนย์',
+      description: 'สามารถใช้งานได้ทุกฟีเจอร์ รวมถึงการอนุมัติและจัดการข้อมูล',
+      color: 'green',
+      permissions: [
+        { category: 'สินค้า', actions: ['read', 'create', 'update', 'delete'] },
+        { category: 'หมวดหมู่', actions: ['read', 'create', 'update', 'delete'] },
+        { category: 'ผู้จำหน่าย', actions: ['read', 'create', 'update', 'delete'] },
+        { category: 'การเคลื่อนไหว', actions: ['read', 'create', 'update', 'delete'] },
+        { category: 'รายงาน', actions: ['read', 'export'] },
+        { category: 'งบประมาณ', actions: ['read', 'create', 'update', 'approve'] },
+        { category: 'การอนุมัติ', actions: ['read', 'approve', 'reject'] }
+      ]
+    },
+    admin: {
+      name: 'ผู้ดูแลระบบ',
+      description: 'สามารถใช้งานได้ทุกฟีเจอร์ รวมถึงการจัดการผู้ใช้และตั้งค่าระบบ',
+      color: 'red',
+      permissions: [
+        { category: 'สินค้า', actions: ['read', 'create', 'update', 'delete'] },
+        { category: 'หมวดหมู่', actions: ['read', 'create', 'update', 'delete'] },
+        { category: 'ผู้จำหน่าย', actions: ['read', 'create', 'update', 'delete'] },
+        { category: 'การเคลื่อนไหว', actions: ['read', 'create', 'update', 'delete'] },
+        { category: 'รายงาน', actions: ['read', 'export'] },
+        { category: 'งบประมาณ', actions: ['read', 'create', 'update', 'approve'] },
+        { category: 'การอนุมัติ', actions: ['read', 'approve', 'reject'] },
+        { category: 'ผู้ใช้', actions: ['read', 'create', 'update', 'delete'] },
+        { category: 'ตั้งค่า', actions: ['read', 'update'] }
+      ]
     }
   };
 
-  const getRoleColor = (role: UserRole) => {
-    const colorMap = {
-      blue: 'bg-blue-50 text-blue-700 border-blue-200',
-      green: 'bg-green-50 text-green-700 border-green-200',
-      red: 'bg-red-50 text-red-700 border-red-200'
-    };
-    return colorMap[role.color as keyof typeof colorMap] || 'bg-gray-50 text-gray-700 border-gray-200';
+  const getTotalPermissions = (roleKey: string) => {
+    return roleData[roleKey as keyof typeof roleData].permissions.reduce((total, category) => total + category.actions.length, 0);
   };
 
-  const getPermissionIcon = (permission: string) => {
-    if (permission.includes('create')) return '➕';
-    if (permission.includes('read')) return '👁️';
-    if (permission.includes('update')) return '✏️';
-    if (permission.includes('delete')) return '🗑️';
-    if (permission.includes('approve')) return '✅';
-    if (permission.includes('export')) return '📤';
-    if (permission.includes('admin')) return '⚙️';
-    return '📋';
+  const getColorClass = (color: string) => {
+    switch (color) {
+      case 'blue': return 'bg-blue-100 text-blue-800';
+      case 'green': return 'bg-green-100 text-green-800';
+      case 'red': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
   };
 
-  const getPermissionCategory = (permission: string) => {
-    if (permission.startsWith('products:')) return 'สินค้า';
-    if (permission.startsWith('categories:')) return 'หมวดหมู่';
-    if (permission.startsWith('suppliers:')) return 'ผู้จำหน่าย';
-    if (permission.startsWith('movements:')) return 'การเคลื่อนไหว';
-    if (permission.startsWith('reports:')) return 'รายงาน';
-    if (permission.startsWith('budget:')) return 'งบประมาณ';
-    if (permission.startsWith('approval:')) return 'การอนุมัติ';
-    if (permission.startsWith('users:')) return 'ผู้ใช้';
-    if (permission.startsWith('settings:')) return 'ตั้งค่า';
-    if (permission.startsWith('system:')) return 'ระบบ';
-    return 'อื่นๆ';
+  const getActionIcon = (action: string) => {
+    switch (action) {
+      case 'read': return <Eye className="h-4 w-4" />;
+      case 'create': return <Plus className="h-4 w-4" />;
+      case 'update': return <Edit className="h-4 w-4" />;
+      case 'delete': return <Trash2 className="h-4 w-4" />;
+      case 'approve': return <Check className="h-4 w-4" />;
+      case 'reject': return <X className="h-4 w-4" />;
+      case 'export': return <Download className="h-4 w-4" />;
+      default: return <Eye className="h-4 w-4" />;
+    }
   };
 
-  const groupPermissionsByCategory = (permissions: string[]) => {
-    const grouped: { [key: string]: string[] } = {};
-    permissions.forEach(permission => {
-      const category = getPermissionCategory(permission);
-      if (!grouped[category]) {
-        grouped[category] = [];
-      }
-      grouped[category].push(permission);
+  const getActionColor = (action: string) => {
+    switch (action) {
+      case 'read': return 'text-gray-600';
+      case 'create': return 'text-green-600';
+      case 'update': return 'text-blue-600';
+      case 'delete': return 'text-red-600';
+      case 'approve': return 'text-green-600';
+      case 'reject': return 'text-red-600';
+      case 'export': return 'text-purple-600';
+      default: return 'text-gray-600';
+    }
+  };
+
+  const currentRole = roleData[selectedRole as keyof typeof roleData];
+
+  const openEditDialog = () => {
+    setEditFormData({
+      name: currentRole.name,
+      description: currentRole.description,
+      permissions: currentRole.permissions.flatMap(p => p.actions)
     });
-    return grouped;
+    setIsEditDialogOpen(true);
   };
 
-  const canViewRoles = hasPermission('settings:read');
+  const handleSaveRole = () => {
+    // Here you would typically save to your backend
+    toast({
+      title: "บันทึกสำเร็จ",
+      description: `แก้ไขบทบาท ${editFormData.name} เรียบร้อยแล้ว`,
+    });
+    setIsEditDialogOpen(false);
+  };
 
-  if (!canViewRoles) {
-    return (
-      <Card>
-        <CardContent className="p-6 text-center">
-          <Shield className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-600 mb-2">ไม่มีสิทธิ์เข้าถึง</h3>
-          <p className="text-gray-500">คุณไม่มีสิทธิ์ในการดูข้อมูลบทบาท</p>
-        </CardContent>
-      </Card>
-    );
-  }
+  const togglePermission = (permission: string) => {
+    setEditFormData(prev => ({
+      ...prev,
+      permissions: prev.permissions.includes(permission)
+        ? prev.permissions.filter(p => p !== permission)
+        : [...prev.permissions, permission]
+    }));
+  };
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">จัดการบทบาทและสิทธิ์</h2>
-        <p className="text-gray-600">ดูข้อมูลบทบาทและสิทธิ์การเข้าถึงระบบ</p>
-      </div>
-
-      <div className="grid gap-6">
-        {roles.map(role => {
-          const groupedPermissions = groupPermissionsByCategory(role.permissions);
-          const isCurrentRole = role.id === currentUserRole;
-          
-          return (
-            <Card key={role.id} className={isCurrentRole ? 'ring-2 ring-blue-500' : ''}>
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${getRoleColor(role)}`}>
-                    {getRoleIcon(role.id)}
+      {/* Header with Edit Button */}
+      <div className="flex justify-between items-center">
+        <div className="flex gap-4">
+          <Button
+            variant={selectedRole === 'staff' ? 'default' : 'outline'}
+            onClick={() => setSelectedRole('staff')}
+            className={selectedRole === 'staff' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+          >
+            เจ้าหน้าที่
+          </Button>
+          <Button
+            variant={selectedRole === 'manager' ? 'default' : 'outline'}
+            onClick={() => setSelectedRole('manager')}
+            className={selectedRole === 'manager' ? 'bg-green-600 hover:bg-green-700' : ''}
+          >
+            ผู้จัดการศูนย์
+          </Button>
+          <Button
+            variant={selectedRole === 'admin' ? 'default' : 'outline'}
+            onClick={() => setSelectedRole('admin')}
+            className={selectedRole === 'admin' ? 'bg-red-600 hover:bg-red-700' : ''}
+          >
+            ผู้ดูแลระบบ
+          </Button>
+        </div>
+        
+        <div className="flex gap-2">
+          <Button variant="outline" className="bg-green-600 hover:bg-green-700 text-white">
+            <Plus className="h-4 w-4 mr-2" />
+            เพิ่มบทบาทใหม่
+          </Button>
+          <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={openEditDialog} className="bg-blue-600 hover:bg-blue-700">
+                <Edit className="h-4 w-4 mr-2" />
+                แก้ไขบทบาท
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>แก้ไขบทบาท: {currentRole.name}</DialogTitle>
+                <DialogDescription>
+                  แก้ไขข้อมูลและสิทธิ์การเข้าถึงของบทบาทนี้
+                </DialogDescription>
+              </DialogHeader>
+              
+              <div className="space-y-6">
+                {/* Basic Info */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="role-name">ชื่อบทบาท</Label>
+                    <Input
+                      id="role-name"
+                      value={editFormData.name}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="กรอกชื่อบทบาท"
+                    />
                   </div>
-                  <div className="flex-1">
-                    <CardTitle className="flex items-center gap-2">
-                      {role.name}
-                      {isCurrentRole && (
-                        <Badge variant="outline" className="text-blue-600 border-blue-200">
-                          บทบาทปัจจุบัน
-                        </Badge>
-                      )}
-                    </CardTitle>
-                    <p className="text-sm text-gray-600 mt-1">{role.description}</p>
+                  <div>
+                    <Label htmlFor="role-description">คำอธิบาย</Label>
+                    <Textarea
+                      id="role-description"
+                      value={editFormData.description}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, description: e.target.value }))}
+                      placeholder="กรอกคำอธิบายบทบาท"
+                      rows={3}
+                    />
                   </div>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <h4 className="font-semibold text-gray-900 mb-3">สิทธิ์การเข้าถึง</h4>
-                    <div className="grid gap-3">
-                      {Object.entries(groupedPermissions).map(([category, permissions]) => (
-                        <div key={category} className="space-y-2">
-                          <h5 className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                            <Info className="h-4 w-4" />
-                            {category}
-                          </h5>
-                          <div className="flex flex-wrap gap-2">
-                            {permissions.map(permission => (
-                              <Badge
-                                key={permission}
-                                variant="outline"
-                                className="text-xs"
-                              >
-                                <span className="mr-1">{getPermissionIcon(permission)}</span>
-                                {permission.replace(/^[^:]+:/, '').replace(/_/g, ' ')}
-                              </Badge>
-                            ))}
-                          </div>
+
+                {/* Permissions */}
+                <div>
+                  <Label className="text-lg font-semibold">สิทธิ์การเข้าถึง</Label>
+                  <div className="grid grid-cols-2 gap-4 mt-4">
+                    {currentRole.permissions.map((permission, index) => (
+                      <div key={index} className="border rounded-lg p-4">
+                        <h4 className="font-medium text-gray-900 mb-3">{permission.category}</h4>
+                        <div className="space-y-2">
+                          {permission.actions.map((action, actionIndex) => (
+                            <div key={actionIndex} className="flex items-center space-x-2">
+                              <Switch
+                                checked={editFormData.permissions.includes(action)}
+                                onCheckedChange={() => togglePermission(action)}
+                              />
+                              <Label className="flex items-center gap-2">
+                                {getActionIcon(action)}
+                                <span className="text-sm">
+                                  {action === 'read' ? 'ดู' :
+                                   action === 'create' ? 'สร้าง' :
+                                   action === 'update' ? 'แก้ไข' :
+                                   action === 'delete' ? 'ลบ' :
+                                   action === 'approve' ? 'อนุมัติ' :
+                                   action === 'reject' ? 'ปฏิเสธ' :
+                                   action === 'export' ? 'ส่งออก' : action}
+                                </span>
+                              </Label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                  ยกเลิก
+                </Button>
+                <Button onClick={handleSaveRole} className="bg-blue-600 hover:bg-blue-700">
+                  <Save className="h-4 w-4 mr-2" />
+                  บันทึกการเปลี่ยนแปลง
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      {/* Role Details */}
+      <Card className="border-l-4 border-t-4 border-l-blue-200 border-t-blue-200">
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-lg ${getColorClass(currentRole.color)}`}>
+              <Shield className="h-6 w-6" />
+            </div>
+            <div>
+              <CardTitle className="text-2xl font-bold text-gray-900">
+                {currentRole.name}
+              </CardTitle>
+              <p className="text-gray-600 mt-1">
+                {currentRole.description}
+              </p>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent>
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">สิทธิ์การเข้าถึง</h3>
+              <div className="space-y-4">
+                {currentRole.permissions.map((permission, index) => (
+                  <div key={index} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center">
+                        <span className="text-xs text-gray-600">i</span>
+                      </div>
+                      <span className="font-medium text-gray-900">{permission.category}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {permission.actions.map((action, actionIndex) => (
+                        <div
+                          key={actionIndex}
+                          className={`flex items-center gap-1 px-2 py-1 rounded-md bg-white border ${getActionColor(action)}`}
+                        >
+                          {getActionIcon(action)}
+                          <span className="text-sm font-medium">
+                            {action === 'read' ? 'read' :
+                             action === 'create' ? '+ create' :
+                             action === 'update' ? 'update' :
+                             action === 'delete' ? 'delete' :
+                             action === 'approve' ? 'approve' :
+                             action === 'reject' ? 'reject' :
+                             action === 'export' ? 'export' : action}
+                          </span>
                         </div>
                       ))}
                     </div>
                   </div>
-                  
-                  <div className="pt-4 border-t">
-                    <div className="flex items-center justify-between text-sm text-gray-600">
-                      <span>จำนวนสิทธิ์ทั้งหมด: {role.permissions.length}</span>
-                      <div className="flex items-center gap-2">
-                        <div className={`w-3 h-3 rounded-full bg-${role.color}-500`}></div>
-                        <span className="capitalize">{role.color}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* Legend */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">คำอธิบายสิทธิ์</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <h4 className="font-semibold text-gray-900 mb-2">ประเภทการดำเนินการ</h4>
-              <div className="space-y-1 text-sm text-gray-600">
-                <div className="flex items-center gap-2">
-                  <span>👁️</span>
-                  <span>ดูข้อมูล (Read)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span>➕</span>
-                  <span>เพิ่มข้อมูล (Create)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span>✏️</span>
-                  <span>แก้ไขข้อมูล (Update)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span>🗑️</span>
-                  <span>ลบข้อมูล (Delete)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span>✅</span>
-                  <span>อนุมัติ (Approve)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span>📤</span>
-                  <span>ส่งออก (Export)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span>⚙️</span>
-                  <span>จัดการระบบ (Admin)</span>
-                </div>
+                ))}
               </div>
             </div>
-            <div>
-              <h4 className="font-semibold text-gray-900 mb-2">ระดับการเข้าถึง</h4>
-              <div className="space-y-2 text-sm text-gray-600">
-                <div className="flex items-center gap-2">
-                  <User className="h-4 w-4 text-blue-500" />
-                  <span><strong>ผู้ใช้งาน:</strong> ใช้งานระบบได้ทุกฟีเจอร์ ยกเว้นการอนุมัติและตั้งค่า</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Shield className="h-4 w-4 text-green-500" />
-                  <span><strong>ผู้จัดการ:</strong> ใช้งานได้ทุกฟีเจอร์ รวมถึงการอนุมัติ</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Crown className="h-4 w-4 text-red-500" />
-                  <span><strong>ผู้ดูแลระบบ:</strong> ใช้งานได้ทุกฟีเจอร์ รวมถึงการจัดการผู้ใช้</span>
-                </div>
+
+            {/* Summary */}
+            <div className="flex justify-between items-center pt-4 border-t">
+              <div className="text-sm text-gray-600">
+                จำนวนสิทธิ์ทั้งหมด: {getTotalPermissions(selectedRole)}
+              </div>
+              <div className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full ${
+                  currentRole.color === 'blue' ? 'bg-blue-500' :
+                  currentRole.color === 'green' ? 'bg-green-500' :
+                  currentRole.color === 'red' ? 'bg-red-500' : 'bg-gray-500'
+                }`}></div>
+                <span className="text-sm font-medium capitalize text-gray-700">
+                  {currentRole.color === 'blue' ? 'Blue' :
+                   currentRole.color === 'green' ? 'Green' :
+                   currentRole.color === 'red' ? 'Red' : 'Gray'}
+                </span>
               </div>
             </div>
           </div>

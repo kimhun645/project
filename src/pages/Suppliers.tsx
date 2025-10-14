@@ -114,9 +114,9 @@ export default function Suppliers() {
 
   const handleBulkDelete = async () => {
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
+      const { FirestoreService } = await import('@/lib/firestoreService');
       for (const supplierId of selectedSuppliers) {
-        await firestoreService.deleteSupplier(supplierId);
+        await FirestoreService.deleteSupplier(supplierId);
       }
       
       toast({
@@ -143,9 +143,9 @@ export default function Suppliers() {
 
   const fetchSuppliers = async () => {
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
-      const suppliersData = await firestoreService.getSuppliers();
-      const productsData = await firestoreService.getProducts();
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      const suppliersData = await FirestoreService.getSuppliers();
+      const productsData = await FirestoreService.getProducts();
 
       const counts: Record<string, number> = {};
       productsData.forEach(product => {
@@ -173,8 +173,8 @@ export default function Suppliers() {
   const handleDeleteSupplier = async (supplierOrId: string | Supplier) => {
     try {
       const supplierId = typeof supplierOrId === 'string' ? supplierOrId : supplierOrId.id;
-      const { firestoreService } = await import('@/lib/firestoreService');
-      await firestoreService.deleteSupplier(supplierId);
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      await FirestoreService.deleteSupplier(supplierId);
 
       toast({
         title: "สำเร็จ",
@@ -197,7 +197,7 @@ export default function Suppliers() {
       key: 'name',
       title: 'ชื่อผู้จัดหา',
       sortable: true,
-      render: (supplier: Supplier) => (
+      render: (cellValue: any, supplier: Supplier) => (
         <div className="flex items-center gap-2">
           <span className="font-medium">{supplier?.name || 'Unknown'}</span>
           {(productCounts[supplier?.id] || 0) > 0 && (
@@ -210,7 +210,7 @@ export default function Suppliers() {
       key: 'email',
       title: 'อีเมล',
       sortable: true,
-      render: (supplier: Supplier) => (
+      render: (cellValue: any, supplier: Supplier) => (
         <span className="text-sm text-muted-foreground">
           {supplier?.email || '-'}
         </span>
@@ -220,7 +220,7 @@ export default function Suppliers() {
       key: 'phone',
       title: 'เบอร์โทร',
       sortable: true,
-      render: (supplier: Supplier) => (
+      render: (cellValue: any, supplier: Supplier) => (
         <span className="text-sm text-muted-foreground">
           {supplier?.phone || '-'}
         </span>
@@ -230,7 +230,7 @@ export default function Suppliers() {
       key: 'product_count',
       title: 'จำนวนสินค้า',
       sortable: true,
-      render: (supplier: Supplier) => {
+      render: (cellValue: any, supplier: Supplier) => {
         if (!supplier?.id) return <span className="text-sm text-muted-foreground">-</span>;
         const count = productCounts[supplier.id] || 0;
         return (
@@ -244,7 +244,7 @@ export default function Suppliers() {
       key: 'status',
       title: 'สถานะ',
       sortable: true,
-      render: (supplier: Supplier) => {
+      render: (cellValue: any, supplier: Supplier) => {
         const count = productCounts[supplier?.id] || 0;
         return count > 0 ? (
           <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-200">
@@ -261,7 +261,7 @@ export default function Suppliers() {
       key: 'actions',
       title: 'การดำเนินการ',
       sortable: false,
-      render: (supplier: Supplier) => (
+      render: (cellValue: any, supplier: Supplier) => (
         <div className="flex items-center gap-1">
           {supplier?.id ? (
             <>
@@ -320,7 +320,17 @@ export default function Suppliers() {
 
   useEffect(() => {
     fetchSuppliers();
+    initializeSuppliersCollection();
   }, []);
+
+  const initializeSuppliersCollection = async () => {
+    try {
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      await FirestoreService.initializeSuppliersCollection();
+    } catch (error) {
+      console.error('Error initializing suppliers collection:', error);
+    }
+  };
 
   return (
     <ProductsStylePageLayout>

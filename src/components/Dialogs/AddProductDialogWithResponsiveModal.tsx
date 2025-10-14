@@ -139,7 +139,8 @@ export function AddProductDialogWithResponsiveModal({
   const checkBarcodeExists = async (barcode: string) => {
     if (!barcode) return false;
     
-    const product = await firestoreService.getProductByBarcode(barcode);
+    const { FirestoreService } = await import('@/lib/firestoreService');
+    const product = await FirestoreService.getProductByBarcode(barcode);
     return !!product;
   };
 
@@ -246,21 +247,22 @@ export function AddProductDialogWithResponsiveModal({
         return;
       }
 
-      await firestoreService.createProduct({
+      const productData = {
         name: formData.name,
         sku: sku,
-        barcode: formData.barcode || undefined,
-        description: formData.description || undefined,
         category_id: formData.category_id,
         supplier_id: formData.supplier_id,
         unit_price: parseFloat(formData.unit_price),
         current_stock: parseInt(formData.current_stock) || 0,
         min_stock: parseInt(formData.min_stock) || 0,
-        max_stock: formData.max_stock ? parseInt(formData.max_stock) : undefined,
-        unit: undefined,
-        location: formData.location || undefined,
-        expiry_date: expiryDate ? expiryDate.toISOString().split('T')[0] : undefined
-      });
+        ...(formData.barcode && { barcode: formData.barcode }),
+        ...(formData.description && { description: formData.description }),
+        ...(formData.max_stock && { max_stock: parseInt(formData.max_stock) }),
+        ...(formData.location && { location: formData.location }),
+        ...(expiryDate && { expiry_date: expiryDate.toISOString().split('T')[0] })
+      };
+      
+      await firestoreService.createProduct(productData);
 
       toast({
         title: "เพิ่มสินค้าเรียบร้อย",

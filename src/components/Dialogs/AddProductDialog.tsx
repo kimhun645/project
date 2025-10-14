@@ -17,7 +17,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Plus, Loader2, CalendarIcon, X, Package, Tag, Building2, MapPin, DollarSign, BarChart3, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { firestoreService } from '@/lib/firestoreService';
+import { firestoreService, FirestoreService } from '@/lib/firestoreService';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
@@ -53,10 +53,16 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
     supplier_id: '',
     unit_price: '',
     cost_price: '',
-    current_stock: '',
+    current_stock: '0',
     min_stock: '',
     max_stock: '',
-    location: ''
+    location: '',
+    unit: 'ชิ้น',
+    is_medicine: false,
+    expiry_date: '',
+    batch_no: '',
+    purchase_price: '',
+    margin_percentage: ''
   });
   
   const selectedCategory = categories.find(cat => cat.id === formData.category_id);
@@ -75,10 +81,16 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
       supplier_id: '',
       unit_price: '',
       cost_price: '',
-      current_stock: '',
+      current_stock: '0',
       min_stock: '',
       max_stock: '',
-      location: ''
+      location: '',
+      unit: 'ชิ้น',
+      is_medicine: false,
+      expiry_date: '',
+      batch_no: '',
+      purchase_price: '',
+      margin_percentage: ''
     });
     setExpiryDate(undefined);
   };
@@ -97,8 +109,8 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
   const fetchCategoriesAndSuppliers = async () => {
     try {
       const [categoriesResult, suppliersResult] = await Promise.all([
-        firestoreService.getCategories(),
-        firestoreService.getSuppliers()
+        FirestoreService.getCategories(),
+        FirestoreService.getSuppliers()
       ]);
 
       setCategories(categoriesResult || []);
@@ -118,11 +130,59 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
     }
   }, [open]);
 
+  // ฟังก์ชันการคำนวณอัตโนมัติ
+  const calculateSellingPrice = (costPrice: number, marginPercent: number) => {
+    return costPrice * (1 + marginPercent / 100);
+  };
+
+  const calculateMargin = (costPrice: number, sellingPrice: number) => {
+    return ((sellingPrice - costPrice) / costPrice) * 100;
+  };
+
+  // ตรวจสอบข้อมูลที่จำเป็น
+  const validateProductData = () => {
+    const errors = [];
+    
+    if (!formData.name) errors.push('ชื่อสินค้า');
+    if (!formData.category_id) errors.push('หมวดหมู่');
+    if (!formData.supplier_id) errors.push('ผู้จำหน่าย');
+    if (!formData.unit_price) errors.push('ราคาขาย');
+    
+    // ตรวจสอบยาที่ต้องมีวันที่หมดอายุ
+    if (selectedCategory?.is_medicine && !expiryDate) {
+      errors.push('วันที่หมดอายุ (จำเป็นสำหรับยา)');
+    }
+    
+    return errors;
+  };
+
+  // อัปเดตราคาขายเมื่อราคาต้นทุนหรือเปอร์เซ็นต์กำไรเปลี่ยน
+  const updateSellingPrice = () => {
+    const costPrice = parseFloat(formData.cost_price) || 0;
+    const marginPercent = parseFloat(formData.margin_percentage) || 0;
+    
+    if (costPrice > 0 && marginPercent > 0) {
+      const sellingPrice = calculateSellingPrice(costPrice, marginPercent);
+      updateFormData('unit_price', sellingPrice.toFixed(2));
+    }
+  };
+
+  // อัปเดตเปอร์เซ็นต์กำไรเมื่อราคาต้นทุนหรือราคาขายเปลี่ยน
+  const updateMarginPercentage = () => {
+    const costPrice = parseFloat(formData.cost_price) || 0;
+    const sellingPrice = parseFloat(formData.unit_price) || 0;
+    
+    if (costPrice > 0 && sellingPrice > 0) {
+      const margin = calculateMargin(costPrice, sellingPrice);
+      updateFormData('margin_percentage', margin.toFixed(2));
+    }
+  };
+
 
 
   const generateSKU = async () => {
     try {
-      const products = await firestoreService.getProducts();
+      const products = await FirestoreService.getProducts();
       
       let nextNum = 1;
       if (products && products.length > 0) {
@@ -143,7 +203,8 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
   const checkBarcodeExists = async (barcode: string) => {
     if (!barcode) return false;
     
-    const product = await firestoreService.getProductByBarcode(barcode);
+    const { FirestoreService } = await import('@/lib/firestoreService');
+    const product = await FirestoreService.getProductByBarcode(barcode);
     return !!product;
   };
 
@@ -200,10 +261,12 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.name || !formData.category_id || !formData.supplier_id || !formData.unit_price) {
+    // ใช้ฟังก์ชันตรวจสอบข้อมูลที่ปรับปรุงแล้ว
+    const validationErrors = validateProductData();
+    if (validationErrors.length > 0) {
       toast({
         title: "กรุณากรอกข้อมูลให้ครบถ้วน",
-        description: "กรุณาระบุชื่อสินค้า หมวดหมู่ ผู้จำหน่าย และราคา",
+        description: `ข้อมูลที่ขาดหายไป: ${validationErrors.join(', ')}`,
         variant: "destructive",
       });
       return;
@@ -247,7 +310,7 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
       }
 
       // Check if SKU already exists
-      const products = await firestoreService.getProducts();
+      const products = await FirestoreService.getProducts();
       const existingSKU = products.find(p => p.sku === sku);
       
       if (existingSKU) {
@@ -261,21 +324,22 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
       }
 
       // Insert new product
-      await firestoreService.createProduct({
+      const productData = {
         name: formData.name,
         sku: sku,
-        barcode: formData.barcode || undefined,
-        description: formData.description || undefined,
         category_id: formData.category_id,
         supplier_id: formData.supplier_id,
         unit_price: parseFloat(formData.unit_price),
         current_stock: parseInt(formData.current_stock) || 0,
         min_stock: parseInt(formData.min_stock) || 0,
-        max_stock: formData.max_stock ? parseInt(formData.max_stock) : undefined,
-        unit: undefined,
-        location: formData.location || undefined,
-        expiry_date: expiryDate ? expiryDate.toISOString().split('T')[0] : undefined
-      });
+        ...(formData.barcode && { barcode: formData.barcode }),
+        ...(formData.description && { description: formData.description }),
+        ...(formData.max_stock && { max_stock: parseInt(formData.max_stock) }),
+        ...(formData.location && { location: formData.location }),
+        ...(expiryDate && { expiry_date: expiryDate.toISOString().split('T')[0] })
+      };
+      
+      await FirestoreService.createProduct(productData);
 
       toast({
         title: "เพิ่มสินค้าเรียบร้อย",
@@ -562,6 +626,46 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
                   <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-slate-500 text-xs">฿</span>
                 </div>
               </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="purchase_price" className="text-xs font-semibold text-slate-700">ราคาซื้อ (บาท)</Label>
+                <div className="relative">
+                  <Input
+                    id="purchase_price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.purchase_price}
+                    onChange={(e) => {
+                      updateFormData('purchase_price', e.target.value);
+                      updateSellingPrice();
+                    }}
+                    placeholder="0.00"
+                    className="h-9 text-sm border-2 border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 bg-white hover:bg-slate-50 transition-all duration-200 shadow-sm hover:shadow-md rounded-lg pl-7"
+                  />
+                  <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-slate-500 text-xs">฿</span>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="margin_percentage" className="text-xs font-semibold text-slate-700">เปอร์เซ็นต์กำไร (%)</Label>
+                <div className="relative">
+                  <Input
+                    id="margin_percentage"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.margin_percentage}
+                    onChange={(e) => {
+                      updateFormData('margin_percentage', e.target.value);
+                      updateSellingPrice();
+                    }}
+                    placeholder="0.00"
+                    className="h-9 text-sm border-2 border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 bg-white hover:bg-slate-50 transition-all duration-200 shadow-sm hover:shadow-md rounded-lg pl-7"
+                  />
+                  <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-slate-500 text-xs">%</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -616,14 +720,44 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
             </div>
           </div>
 
-          {/* Expiry Date for Medicine */}
+          {/* Medicine Information */}
           {selectedCategory?.is_medicine && (
             <div className="space-y-3">
               <div className="flex items-center space-x-2 mb-2">
                 <div className="p-1.5 bg-gradient-to-r from-red-500 to-pink-600 rounded-lg">
                   <AlertCircle className="h-3 w-3 text-white" />
                 </div>
-                <h3 className="text-base font-semibold text-slate-800">วันหมดอายุ</h3>
+                <h3 className="text-base font-semibold text-slate-800">ข้อมูลยา</h3>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="batch_no" className="text-xs font-semibold text-slate-700">เลขที่ล็อต</Label>
+                  <Input
+                    id="batch_no"
+                    value={formData.batch_no}
+                    onChange={(e) => updateFormData('batch_no', e.target.value)}
+                    placeholder="เลขที่ล็อต"
+                    className="h-9 text-sm border-2 border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 bg-white hover:bg-slate-50 transition-all duration-200 shadow-sm hover:shadow-md rounded-lg"
+                  />
+                </div>
+                
+                <div className="space-y-1">
+                  <Label htmlFor="unit" className="text-xs font-semibold text-slate-700">หน่วยนับ</Label>
+                  <Select value={formData.unit} onValueChange={(value) => updateFormData('unit', value)}>
+                    <SelectTrigger className="h-9 text-sm border-2 border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 bg-white hover:bg-slate-50 transition-all duration-200 shadow-sm hover:shadow-md rounded-lg">
+                      <SelectValue placeholder="เลือกหน่วย" />
+                    </SelectTrigger>
+                    <SelectContent className="relative z-50 rounded-lg border-2 border-slate-200 shadow-xl">
+                      <SelectItem value="ชิ้น" className="text-sm py-2 hover:bg-emerald-50">ชิ้น</SelectItem>
+                      <SelectItem value="กล่อง" className="text-sm py-2 hover:bg-emerald-50">กล่อง</SelectItem>
+                      <SelectItem value="ขวด" className="text-sm py-2 hover:bg-emerald-50">ขวด</SelectItem>
+                      <SelectItem value="แผง" className="text-sm py-2 hover:bg-emerald-50">แผง</SelectItem>
+                      <SelectItem value="แคปซูล" className="text-sm py-2 hover:bg-emerald-50">แคปซูล</SelectItem>
+                      <SelectItem value="เม็ด" className="text-sm py-2 hover:bg-emerald-50">เม็ด</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               
               <div className="space-y-2">

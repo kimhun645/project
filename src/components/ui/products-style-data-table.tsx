@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { RefreshCw, Grid3x3 as Grid3X3, List, CheckSquare, Square, MoreVertical, ArrowUpDown, Filter, X, FileEdit as Edit, Trash2, Package } from 'lucide-react';
 import { TableColumn } from './products-style-components';
+import { TableSkeleton, GridSkeleton } from './loading-skeleton';
 
 export interface ProductsStyleDataTableProps {
   title: string;
@@ -296,11 +297,16 @@ export function ProductsStyleDataTable({
                             </Button>
                           </div>
                         </TableCell>
-                        {visibleColumns.map((column) => (
-                          <TableCell key={column.key} className="font-bold text-base sm:text-lg py-4">
-                            {column.render && item ? column.render(item, item) : (item ? item[column.key] : '-')}
-                          </TableCell>
-                        ))}
+                        {visibleColumns.map((column) => {
+                          const cellValue = item ? item[column.key] : null;
+                          const displayValue = cellValue != null ? String(cellValue) : '-';
+                          
+                          return (
+                            <TableCell key={column.key} className="font-bold text-base sm:text-lg py-4">
+                              {column.render && item ? column.render(cellValue, item) : displayValue}
+                            </TableCell>
+                          );
+                        })}
                       </TableRow>
                     );
                   })
@@ -526,7 +532,9 @@ export function ProductsStyleDataTable({
                       
                       <div className="space-y-2">
                         {visibleColumns.slice(0, 3).map((column) => {
-                          const renderedValue = column.render ? column.render(item, item) : (item ? item[column.key] : '-');
+                          const cellValue = item ? item[column.key] : null;
+                          const displayValue = cellValue != null ? String(cellValue) : '-';
+                          const renderedValue = column.render ? column.render(cellValue, item) : displayValue;
                           return (
                             <div key={column.key} className="flex items-center justify-between">
                               <span className="text-sm text-gray-600">{column.title}:</span>
@@ -583,6 +591,11 @@ export function ProductsStyleDataTable({
       </CardContent>
     </Card>
   );
+
+  // Show loading skeleton when loading
+  if (loading) {
+    return currentViewMode === 'table' ? <TableSkeleton /> : <GridSkeleton />;
+  }
 
   return currentViewMode === 'table' ? <TableView /> : <GridView />;
 }

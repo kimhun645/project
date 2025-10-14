@@ -83,15 +83,22 @@ export function AddSupplierDialog({ onSupplierAdded }: AddSupplierDialogProps) {
     setIsLoading(true);
 
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
-      await firestoreService.createSupplier({
+      console.log('🔍 กำลังเพิ่มผู้จำหน่าย:', formData);
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      
+      const supplierData = {
         name: formData.name.trim(),
-        contact_person: formData.contact_person.trim() || undefined,
-        email: formData.email.trim() || undefined,
-        phone: formData.phone.trim() || undefined,
-        address: formData.address.trim() || undefined,
-        notes: formData.notes.trim() || undefined
-      });
+        ...(formData.contact_person.trim() && { contact_person: formData.contact_person.trim() }),
+        ...(formData.email.trim() && { email: formData.email.trim() }),
+        ...(formData.phone.trim() && { phone: formData.phone.trim() }),
+        ...(formData.address.trim() && { address: formData.address.trim() }),
+        ...(formData.notes.trim() && { notes: formData.notes.trim() })
+      };
+      
+      console.log('📝 ข้อมูลผู้จำหน่ายที่จะบันทึก:', supplierData);
+      
+      const newSupplier = await FirestoreService.createSupplier(supplierData);
+      console.log('✅ เพิ่มผู้จำหน่ายสำเร็จ:', newSupplier);
 
       toast({
         title: "เพิ่มผู้จำหน่ายเรียบร้อย",
@@ -103,10 +110,10 @@ export function AddSupplierDialog({ onSupplierAdded }: AddSupplierDialogProps) {
       onSupplierAdded?.();
 
     } catch (error) {
-      console.error('Error adding supplier:', error);
+      console.error('❌ ข้อผิดพลาดในการเพิ่มผู้จำหน่าย:', error);
       toast({
         title: "เกิดข้อผิดพลาด",
-        description: "ไม่สามารถเพิ่มผู้จำหน่ายได้",
+        description: `ไม่สามารถเพิ่มผู้จำหน่ายได้: ${error instanceof Error ? error.message : String(error)}`,
         variant: "destructive",
       });
     } finally {

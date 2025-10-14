@@ -32,20 +32,23 @@ export function useBarcodeScanner({
           clearTimeout(scannerTimeoutRef.current);
         }
 
+        // Set scanner as detected when any valid character is pressed
+        setScannerDetected(true);
+
         if (isEnter) {
+          // Prevent form submission when scanning barcode
+          event.preventDefault();
+          event.stopPropagation();
+          
           // Process the accumulated input
           if (scannerInputRef.current.length >= minLength) {
             const scannedCode = scannerInputRef.current.trim();
-            setScannerDetected(true);
             setLastScannedCode(scannedCode);
             
             // Call the callback if provided
             if (onScan) {
               onScan(scannedCode);
             }
-            
-            // Reset scanner detection after 3 seconds
-            setTimeout(() => setScannerDetected(false), 3000);
           }
           
           // Reset the input buffer
@@ -57,6 +60,7 @@ export function useBarcodeScanner({
           // Set timeout to reset buffer if typing is too slow (human typing)
           scannerTimeoutRef.current = setTimeout(() => {
             scannerInputRef.current = '';
+            setScannerDetected(false);
           }, timeout);
         }
       }

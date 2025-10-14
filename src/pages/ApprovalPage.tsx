@@ -45,6 +45,7 @@ import { type BudgetRequest as DBBudgetRequest, type Approval as ApprovalInfo } 
 import { Layout } from '@/components/Layout/Layout';
 import { PageHeader } from '@/components/Layout/PageHeader';
 import { useToast } from '@/hooks/use-toast';
+import { useBarcodeScanner } from '@/hooks/use-barcode-scanner';
 import { 
   ProductsStylePageLayout, 
   ProductsStylePageHeader, 
@@ -93,6 +94,8 @@ const ApprovalPage: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { currentUser } = useAuth();
+  
+  // State declarations
   const [budgetRequest, setBudgetRequest] = useState<DBBudgetRequest | null>(null);
   const [approvalInfo, setApprovalInfo] = useState<ApprovalInfo | null>(null);
   const [pendingRequests, setPendingRequests] = useState<DBBudgetRequest[]>([]);
@@ -104,6 +107,7 @@ const ApprovalPage: React.FC = () => {
   const [approvalRemark, setApprovalRemark] = useState('');
   const [confirmationText, setConfirmationText] = useState('');
   
+  
   // Search and filter states
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('PENDING');
@@ -114,7 +118,21 @@ const ApprovalPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [selectedRequests, setSelectedRequests] = useState<string[]>([]);
-  const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
+  const [viewMode, setViewMode] = useState<'card' | 'table'>('table');
+
+  // Barcode scanner support
+  const { scannerDetected, lastScannedCode } = useBarcodeScanner({
+    onScan: (scannedCode) => {
+      // Auto-search for approval request when barcode is scanned
+      setSearchTerm(scannedCode);
+      toast({
+        title: "สแกนบาร์โค้ดสำเร็จ",
+        description: `ค้นหาการอนุมัติ: ${scannedCode}`,
+      });
+    },
+    minLength: 3,
+    timeout: 100
+  });
 
   useEffect(() => {
     if (request_id) {
@@ -232,9 +250,9 @@ const ApprovalPage: React.FC = () => {
     
     try {
       setIsLoading(true);
-      const { firestoreService } = await import('@/lib/firestoreService');
+      const { FirestoreService } = await import('@/lib/firestoreService');
       for (const requestId of selectedRequests) {
-        await firestoreService.updateBudgetRequest(requestId, {
+        await FirestoreService.updateBudgetRequest(requestId, {
           status: 'APPROVED',
           approved_by: 'ผู้บริหาร',
           approved_at: new Date().toISOString()
@@ -265,9 +283,9 @@ const ApprovalPage: React.FC = () => {
     
     try {
       setIsLoading(true);
-      const { firestoreService } = await import('@/lib/firestoreService');
+      const { FirestoreService } = await import('@/lib/firestoreService');
       for (const requestId of selectedRequests) {
-        await firestoreService.updateBudgetRequest(requestId, {
+        await FirestoreService.updateBudgetRequest(requestId, {
           status: 'REJECTED',
           approved_by: 'ผู้บริหาร',
           approved_at: new Date().toISOString()
@@ -387,7 +405,7 @@ const ApprovalPage: React.FC = () => {
         }
         
         return (
-          <div className="text-right">
+          <div className="text-center">
             <div className="font-semibold text-green-600">
               ฿{amount.toLocaleString('th-TH')}
             </div>
@@ -560,14 +578,14 @@ const ApprovalPage: React.FC = () => {
       console.log('🔄 กำลังดึงข้อมูลคำขอใช้งบประมาณ...');
       
       // เพิ่มการตรวจสอบ Firebase connection
-      const { firestoreService } = await import('@/lib/firestoreService');
+      const { FirestoreService } = await import('@/lib/firestoreService');
       
       // ตรวจสอบว่า Firebase ทำงานหรือไม่
-      if (!firestoreService) {
+      if (!FirestoreService) {
         throw new Error('Firebase service not available');
       }
       
-      const requests = await firestoreService.getBudgetRequests();
+      const requests = await FirestoreService.getBudgetRequests();
       console.log('📊 ข้อมูลที่ได้รับ:', requests.length, 'รายการ');
       console.log('📋 รายการคำขอ:', requests);
       
@@ -624,10 +642,10 @@ const ApprovalPage: React.FC = () => {
       setError(null);
       console.log('🔍 Fetching budget request with ID:', id);
       
-      const { firestoreService } = await import('@/lib/firestoreService');
-      console.log('📦 FirestoreService loaded:', !!firestoreService);
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      console.log('📦 FirestoreService loaded:', !!FirestoreService);
       
-      const request = await firestoreService.getBudgetRequest(id);
+      const request = await FirestoreService.getBudgetRequest(id);
       console.log('📊 Received budget request:', request);
       
       if (!request) {
@@ -641,7 +659,7 @@ const ApprovalPage: React.FC = () => {
       // Fetch approval info if not pending
       if (request.status !== 'PENDING') {
         try {
-          const approval = await firestoreService.getApprovalByRequestId(request.id.toString());
+          const approval = await FirestoreService.getApprovalByRequestId(request.id.toString());
           setApprovalInfo(approval);
         } catch (err) {
           console.log('No approval info found or error:', err);
@@ -675,31 +693,47 @@ const ApprovalPage: React.FC = () => {
   const handleApprove = async (requestId?: string) => {
     if (requestId) {
       // Single request approval
+      const currentStatus = String(budgetRequest?.status || '').toUpperCase();
+      
+      if (currentStatus === 'APPROVED') {
+        alert('คำขอนี้ได้รับการอนุมัติแล้ว');
+        return;
+      }
+
+      // Check if user has permission to approve
+      if (!currentUser) {
+        alert('กรุณาเข้าสู่ระบบก่อน');
+        return;
+      }
+
+      if (currentUser.role !== 'manager' && currentUser.role !== 'admin') {
+        alert('คุณไม่มีสิทธิ์ในการอนุมัติ');
+        return;
+      }
+
       try {
-        // Check if already approved
-        const currentStatus = String(budgetRequest?.status || '').toUpperCase();
-        if (currentStatus === 'APPROVED') {
-          alert('คำขอนี้ได้รับการอนุมัติแล้ว');
-          return;
-        }
-
-        const confirmed = window.confirm('คุณต้องการอนุมัติคำขอนี้หรือไม่?');
-        if (!confirmed) return;
-
-        const { firestoreService } = await import('@/lib/firestoreService');
-        await firestoreService.updateBudgetRequestStatus(requestId, 'APPROVED', currentUser?.name || currentUser?.email || 'ผู้อนุมัติ');
+        const { FirestoreService } = await import('@/lib/firestoreService');
+        const approverName = currentUser?.displayName || currentUser?.email || 'ผู้อนุมัติ';
+        
+        await FirestoreService.updateBudgetRequestStatus(requestId, 'APPROVED', approverName);
         
         // Refresh the budget request data
         await fetchBudgetRequest(requestId);
         
         // Show success message
-        alert('อนุมัติคำขอเรียบร้อยแล้ว');
+        toast({
+          title: "อนุมัติสำเร็จ",
+          description: "อนุมัติคำขอเรียบร้อยแล้ว",
+          variant: "default"
+        });
         
-        // Navigate back to approval page
-        navigate('/approval');
       } catch (error) {
         console.error('Error approving request:', error);
-        alert('เกิดข้อผิดพลาดในการอนุมัติคำขอ');
+        toast({
+          title: "เกิดข้อผิดพลาด",
+          description: "ไม่สามารถอนุมัติคำขอได้",
+          variant: "destructive"
+        });
       }
     } else {
       // Multiple requests approval
@@ -707,40 +741,57 @@ const ApprovalPage: React.FC = () => {
     }
   };
 
+
   const handleReject = async (requestId?: string) => {
     if (requestId) {
       // Single request rejection
+      const currentStatus = String(budgetRequest?.status || '').toUpperCase();
+      if (currentStatus === 'REJECTED') {
+        alert('คำขอนี้ถูกปฏิเสธแล้ว');
+        return;
+      }
+
+      // Check if user has permission to reject
+      if (!currentUser) {
+        alert('กรุณาเข้าสู่ระบบก่อน');
+        return;
+      }
+
+      if (currentUser.role !== 'manager' && currentUser.role !== 'admin') {
+        alert('คุณไม่มีสิทธิ์ในการปฏิเสธ');
+        return;
+      }
+
       try {
-        // Check if already rejected
-        const currentStatus = String(budgetRequest?.status || '').toUpperCase();
-        if (currentStatus === 'REJECTED') {
-          alert('คำขอนี้ถูกปฏิเสธแล้ว');
-          return;
-        }
-
-        const confirmed = window.confirm('คุณต้องการไม่อนุมัติคำขอนี้หรือไม่?');
-        if (!confirmed) return;
-
-        const { firestoreService } = await import('@/lib/firestoreService');
-        await firestoreService.updateBudgetRequestStatus(requestId, 'REJECTED', currentUser?.name || currentUser?.email || 'ผู้อนุมัติ');
+        const { FirestoreService } = await import('@/lib/firestoreService');
+        const approverName = currentUser?.displayName || currentUser?.email || 'ผู้อนุมัติ';
+        
+        await FirestoreService.updateBudgetRequestStatus(requestId, 'REJECTED', approverName);
         
         // Refresh the budget request data
         await fetchBudgetRequest(requestId);
         
         // Show success message
-        alert('ไม่อนุมัติคำขอเรียบร้อยแล้ว');
+        toast({
+          title: "ปฏิเสธสำเร็จ",
+          description: "ปฏิเสธคำขอเรียบร้อยแล้ว",
+          variant: "default"
+        });
         
-        // Navigate back to approval page
-        navigate('/approval');
       } catch (error) {
         console.error('Error rejecting request:', error);
-        alert('เกิดข้อผิดพลาดในการไม่อนุมัติคำขอ');
+        toast({
+          title: "เกิดข้อผิดพลาด",
+          description: "ไม่สามารถปฏิเสธคำขอได้",
+          variant: "destructive"
+        });
       }
     } else {
       // Multiple requests rejection
       setShowRejectDialog(true);
     }
   };
+
 
   const sendApprovalNotification = async (requestData: DBBudgetRequest, decision: 'APPROVED' | 'REJECTED', approverName: string, remark: string) => {
     try {
@@ -886,173 +937,7 @@ ${remark ? `หมายเหตุจากผู้อนุมัติ: ${r
     }
   };
 
-  const confirmApprove = async () => {
-    if (!budgetRequest || confirmationText !== 'อนุมัติ') return;
-    
-    try {
-      setIsLoading(true);
-      
-      // ใช้ชื่อผู้ใช้ปัจจุบันที่มีบทบาท manager แทนการดึงจาก Settings
-      let approverName = 'ผู้บริหาร'; // Default fallback
-      
-      console.log('🔍 Current User Data:', {
-        displayName: currentUser?.displayName,
-        role: currentUser?.role,
-        email: currentUser?.email
-      });
-      
-      // ตรวจสอบว่าผู้ใช้ปัจจุบันเป็น manager หรือไม่
-      if (currentUser && currentUser.role === 'manager') {
-        // ตรวจสอบว่า displayName เป็น email หรือไม่
-        if (currentUser.displayName && !currentUser.displayName.includes('@')) {
-          approverName = currentUser.displayName;
-          console.log('✅ ใช้ชื่อจริงจาก displayName:', approverName);
-        } else {
-          // หาก displayName เป็น email หรือ null ให้ใช้ชื่อจาก email
-          const emailName = currentUser.email?.split('@')[0] || 'ผู้จัดการศูนย์';
-          approverName = emailName;
-          console.log('⚠️ displayName เป็น email ใช้ชื่อจาก email:', approverName);
-        }
-      } else {
-        // หากไม่ใช่ manager ให้ลองดึงจาก Settings
-        try {
-          const settingsResponse = await fetch('/api/settings');
-          if (settingsResponse.ok) {
-            const settings = await settingsResponse.json();
-            approverName = settings.approverName || approverName;
-            console.log('✅ ใช้ชื่อจาก Settings:', approverName);
-          }
-        } catch (error) {
-          console.log('Using default approver name:', approverName);
-        }
-      }
-      
-      // ตรวจสอบว่าเป็น email หรือไม่
-      if (approverName.includes('@')) {
-        const emailName = approverName.split('@')[0];
-        approverName = emailName;
-        console.log('⚠️ ตรวจพบ email เปลี่ยนเป็นชื่อ:', approverName);
-      }
-      
-      console.log('📋 ชื่อผู้อนุมัติที่ใช้:', approverName);
 
-      // Update budget request with approval info
-      const { firestoreService } = await import('@/lib/firestoreService');
-      await firestoreService.updateBudgetRequest(budgetRequest.id.toString(), {
-        ...budgetRequest,
-        status: 'APPROVED',
-        approved_by: approverName,
-        approver_name: approverName, // เพิ่มเพื่อความสอดคล้อง
-        approved_at: new Date().toISOString()
-      });
-
-      await firestoreService.createApproval({
-        request_id: parseInt(budgetRequest.id.toString()),
-        approver_name: approverName,
-        decision: 'APPROVED',
-        remark: approvalRemark
-      });
-      
-      // Send approval notification email
-      await sendApprovalNotification(budgetRequest, 'APPROVED', approverName, approvalRemark);
-      
-      setShowApprovalDialog(false);
-      setApprovalRemark('');
-      setConfirmationText('');
-      
-      // Navigate back to approval list
-      navigate('/approval');
-    } catch (err) {
-      console.error('Error approving request:', err);
-      setError('ไม่สามารถอนุมัติคำขอได้');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const confirmReject = async () => {
-    if (!budgetRequest || confirmationText !== 'ปฏิเสธ') return;
-    
-    try {
-      setIsLoading(true);
-      
-      // ใช้ชื่อผู้ใช้ปัจจุบันที่มีบทบาท manager แทนการดึงจาก Settings
-      let approverName = 'ผู้บริหาร'; // Default fallback
-      
-      console.log('🔍 Current User Data (Reject):', {
-        displayName: currentUser?.displayName,
-        role: currentUser?.role,
-        email: currentUser?.email
-      });
-      
-      // ตรวจสอบว่าผู้ใช้ปัจจุบันเป็น manager หรือไม่
-      if (currentUser && currentUser.role === 'manager') {
-        // ตรวจสอบว่า displayName เป็น email หรือไม่
-        if (currentUser.displayName && !currentUser.displayName.includes('@')) {
-          approverName = currentUser.displayName;
-          console.log('✅ ใช้ชื่อจริงจาก displayName (Reject):', approverName);
-        } else {
-          // หาก displayName เป็น email หรือ null ให้ใช้ชื่อจาก email
-          const emailName = currentUser.email?.split('@')[0] || 'ผู้จัดการศูนย์';
-          approverName = emailName;
-          console.log('⚠️ displayName เป็น email ใช้ชื่อจาก email (Reject):', approverName);
-        }
-      } else {
-        // หากไม่ใช่ manager ให้ลองดึงจาก Settings
-        try {
-          const settingsResponse = await fetch('/api/settings');
-          if (settingsResponse.ok) {
-            const settings = await settingsResponse.json();
-            approverName = settings.approverName || approverName;
-            console.log('✅ ใช้ชื่อจาก Settings (Reject):', approverName);
-          }
-        } catch (error) {
-          console.log('Using default approver name (Reject):', approverName);
-        }
-      }
-      
-      // ตรวจสอบว่าเป็น email หรือไม่
-      if (approverName.includes('@')) {
-        const emailName = approverName.split('@')[0];
-        approverName = emailName;
-        console.log('⚠️ ตรวจพบ email เปลี่ยนเป็นชื่อ (Reject):', approverName);
-      }
-      
-      console.log('📋 ชื่อผู้อนุมัติที่ใช้ (Reject):', approverName);
-
-      // Update budget request with rejection info
-      const { firestoreService } = await import('@/lib/firestoreService');
-      await firestoreService.updateBudgetRequest(budgetRequest.id.toString(), {
-        ...budgetRequest,
-        status: 'REJECTED',
-        approved_by: approverName,
-        approver_name: approverName, // เพิ่มเพื่อความสอดคล้อง
-        approved_at: new Date().toISOString()
-      });
-
-      await firestoreService.createApproval({
-        request_id: parseInt(budgetRequest.id.toString()),
-        approver_name: approverName,
-        decision: 'REJECTED',
-        remark: approvalRemark
-      });
-      
-      // Send rejection notification email
-      await sendApprovalNotification(budgetRequest, 'REJECTED', approverName, approvalRemark);
-      
-      setShowRejectDialog(false);
-      setApprovalRemark('');
-      setConfirmationText('');
-      
-      // Navigate back to approval list
-      navigate('/approval');
-    } catch (err) {
-      console.error('Error rejecting request:', err);
-      setError('ไม่สามารถปฏิเสธคำขอได้');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handlePrint = async (request: DBBudgetRequest) => {
     const printWindow = window.open('', '_blank');
@@ -1173,7 +1058,10 @@ ${remark ? `หมายเหตุจากผู้อนุมัติ: ${r
     <div class="print-title"></div>
     <div class="print-code">
       <strong>รหัสคำขอ:</strong> ${request.request_no}<br>
-      <strong>วันที่:</strong> ${new Date(request.request_date).toLocaleDateString('th-TH')}
+      <strong>วันที่:</strong> ${new Date(request.request_date).toLocaleDateString('th-TH')}<br>
+      <strong>สถานะ:</strong> ${request.status === 'PENDING' ? 'รอการอนุมัติ' : 
+                               request.status === 'APPROVED' ? 'อนุมัติแล้ว' : 
+                               request.status === 'REJECTED' ? 'ปฏิเสธ' : 'ไม่ระบุ'}
     </div>
   </div>
 
@@ -1702,7 +1590,7 @@ ${remark ? `หมายเหตุจากผู้อนุมัติ: ${r
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}
           onRefresh={handleRefresh}
-          scannerDetected={false}
+          scannerDetected={scannerDetected}
           actionButtons={
             <div className="flex items-center gap-2">
               <Button
@@ -2174,50 +2062,6 @@ ${remark ? `หมายเหตุจากผู้อนุมัติ: ${r
                     )}
                   </div>
 
-                  {/* Approval Buttons */}
-                  {budgetRequest.status === 'PENDING' && (
-                    <div className="space-y-4 mt-8">
-                      {/* Approve Button */}
-                      <div className="relative group">
-                        <div className="absolute -inset-1 bg-gradient-to-r from-emerald-600 to-green-600 rounded-2xl blur opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200 animate-pulse"></div>
-                        <Button
-                          onClick={() => handleApprove()}
-                          className="relative w-full bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 text-white font-bold py-6 rounded-2xl shadow-2xl transform hover:scale-105 transition-all duration-300 border-0"
-                          disabled={isLoading}
-                        >
-                          <div className="flex items-center justify-center space-x-3">
-                            <div className="p-2 bg-white/20 rounded-full">
-                              <Check className="h-6 w-6" />
-                            </div>
-                            <div className="text-left">
-                              <div className="text-xl font-bold">อนุมัติ</div>
-                              <div className="text-sm opacity-90">ยืนยันการอนุมัติคำขอ</div>
-                            </div>
-                          </div>
-                        </Button>
-                      </div>
-
-                      {/* Reject Button */}
-                      <div className="relative group">
-                        <div className="absolute -inset-1 bg-gradient-to-r from-red-600 to-rose-600 rounded-2xl blur opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200 animate-pulse"></div>
-                        <Button
-                          onClick={() => handleReject()}
-                          className="relative w-full bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600 text-white font-bold py-6 rounded-2xl shadow-2xl transform hover:scale-105 transition-all duration-300 border-0"
-                          disabled={isLoading}
-                        >
-                          <div className="flex items-center justify-center space-x-3">
-                            <div className="p-2 bg-white/20 rounded-full">
-                              <X className="h-6 w-6" />
-                            </div>
-                            <div className="text-left">
-                              <div className="text-xl font-bold">ปฏิเสธ</div>
-                              <div className="text-sm opacity-90">ปฏิเสธคำขอนี้</div>
-                            </div>
-                          </div>
-                        </Button>
-                      </div>
-                    </div>
-                  )}
                 </CardContent>
               </Card>
             </div>
@@ -2347,6 +2191,7 @@ ${remark ? `หมายเหตุจากผู้อนุมัติ: ${r
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
     </Layout>
   );
 };

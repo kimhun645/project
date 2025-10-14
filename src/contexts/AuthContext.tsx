@@ -49,8 +49,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
 
         try {
+          console.log('🔍 AuthContext: Loading user data for UID:', user.uid);
           const userData = await userService.getUserById(user.uid);
-          console.log('User data loaded:', userData);
+          console.log('✅ AuthContext: User data loaded:', userData);
+          console.log('✅ AuthContext: User role:', userData.role);
+          console.log('✅ AuthContext: User displayName:', userData.displayName);
           setCurrentUser(userData);
         } catch (error) {
           console.log('User not found in Firestore, creating new user document...');
@@ -112,9 +115,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      console.log('Signing in:', email);
+      console.log('🔐 AuthContext: Signing in:', email);
+      console.log('🔐 AuthContext: Firebase Auth instance:', auth);
+      console.log('🔐 AuthContext: Auth domain:', auth.config.authDomain);
+      
       const user = await userService.signIn(email, password);
-      console.log('Sign in successful:', user);
+      console.log('✅ AuthContext: Sign in successful:', user);
+      console.log('✅ AuthContext: User role:', user.role);
+      console.log('✅ AuthContext: User displayName:', user.displayName);
       setCurrentUser(user);
 
       const firebaseUser = await userService.getCurrentUser();
@@ -131,7 +139,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
       }
     } catch (error: any) {
-      console.error('Sign in error:', error);
+      console.error('❌ AuthContext: Sign in error:', error);
+      console.error('❌ AuthContext: Error code:', error.code);
+      console.error('❌ AuthContext: Error message:', error.message);
+      console.error('❌ AuthContext: Full error:', error);
       throw error;
     }
   };

@@ -15,6 +15,20 @@ export const auth = getAuth(app);
 // Initialize Cloud Firestore and get a reference to the service
 export const db = getFirestore(app);
 
+// Debug Firebase configuration
+console.log('🔧 Firebase Config:', {
+  apiKey: config.apiKey,
+  authDomain: config.authDomain,
+  projectId: config.projectId,
+  storageBucket: config.storageBucket,
+  messagingSenderId: config.messagingSenderId,
+  appId: config.appId
+});
+
+console.log('🔧 Firebase Auth instance:', auth);
+console.log('🔧 Firebase Auth domain:', auth.config.authDomain);
+console.log('🔧 Firebase Auth API key:', auth.config.apiKey);
+
 // Connect to emulators in development (disabled for now)
 // if (process.env.NODE_ENV === 'development') {
 //   try {

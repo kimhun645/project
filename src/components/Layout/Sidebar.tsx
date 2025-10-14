@@ -14,7 +14,8 @@ import {
   ScanLine,
   DollarSign,
   CheckCircle,
-  LogOut
+  LogOut,
+  User
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -31,6 +32,7 @@ const navigation = [
   { name: 'ขอใช้งบประมาณ', href: '/budget-request', icon: DollarSign },
   { name: 'การอนุมัติ', href: '/approval', icon: CheckCircle, disabled: false },
   { name: 'รายงาน', href: '/reports', icon: FileText },
+  { name: 'โปรไฟล์', href: '/profile', icon: User },
   { name: 'ตั้งค่า', href: '/settings', icon: Settings },
 ];
 

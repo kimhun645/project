@@ -19,7 +19,7 @@ import {
   ProductsStylePagination,
   ProductsStyleDeleteConfirmationDialog,
   type StatCard,
-  type ProductsStyleTableColumn
+  type TableColumn
 } from '@/components/ui/shared-components';
 
 interface ProductWithCategory extends Product {
@@ -144,9 +144,9 @@ export default function Products() {
     if (selectedProducts.length === 0) return;
 
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
+      const { FirestoreService } = await import('@/lib/firestoreService');
       for (const productId of selectedProducts) {
-        await firestoreService.deleteProduct(productId);
+        await FirestoreService.deleteProduct(productId);
       }
 
       toast({
@@ -168,9 +168,9 @@ export default function Products() {
 
   const fetchProducts = async () => {
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
-      const productsData = await firestoreService.getProducts();
-      const categoriesData = await firestoreService.getCategories();
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      const productsData = await FirestoreService.getProducts();
+      const categoriesData = await FirestoreService.getCategories();
 
       setProducts(productsData || []);
       setCategories(categoriesData || []);
@@ -227,8 +227,8 @@ export default function Products() {
     }
 
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
-      await firestoreService.deleteProduct(productToDelete.id);
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      await FirestoreService.deleteProduct(productToDelete.id);
 
       toast({
         title: "สำเร็จ",
@@ -261,12 +261,12 @@ export default function Products() {
   const normalStockProducts = totalProducts - lowStockProducts - outOfStockProducts;
 
   // Define columns for data table
-  const columns: ProductsStyleTableColumn[] = [
+  const columns: TableColumn[] = [
     {
       key: 'name',
       title: 'ชื่อสินค้า',
       sortable: true,
-      render: (product: ProductWithCategory) => (
+      render: (value, product) => (
         <div className="flex items-center gap-2">
           <span className="font-medium">{product?.name || 'Unknown'}</span>
           {product?.sku && (
@@ -281,9 +281,9 @@ export default function Products() {
       key: 'category_id',
       title: 'หมวดหมู่',
       sortable: true,
-      render: (product: ProductWithCategory) => (
+      render: (value, product) => (
         <span className="text-sm text-muted-foreground">
-          {product?.categories?.name || '-'}
+          {product?.category_name || '-'}
         </span>
       )
     },
@@ -291,7 +291,7 @@ export default function Products() {
       key: 'current_stock',
       title: 'สต็อกปัจจุบัน',
       sortable: true,
-      render: (product: ProductWithCategory) => {
+      render: (value, product) => {
         const stock = product?.current_stock || 0;
         const minStock = product?.min_stock || 0;
         const isLowStock = stock <= minStock;
@@ -312,7 +312,7 @@ export default function Products() {
       key: 'unit_price',
       title: 'ราคาต่อหน่วย',
       sortable: true,
-      render: (product: ProductWithCategory) => (
+      render: (value, product) => (
         <span className="text-sm text-muted-foreground">
           {product?.unit_price ? `฿${product.unit_price.toLocaleString()}` : '-'}
         </span>
@@ -322,9 +322,9 @@ export default function Products() {
       key: 'supplier_id',
       title: 'ผู้จัดหา',
       sortable: true,
-      render: (product: ProductWithCategory) => (
+      render: (value, product) => (
         <span className="text-sm text-muted-foreground">
-          {product?.suppliers?.name || '-'}
+          {product?.supplier_name || '-'}
         </span>
       )
     },
@@ -332,7 +332,7 @@ export default function Products() {
       key: 'actions',
       title: 'การดำเนินการ',
       sortable: false,
-      render: (product: ProductWithCategory) => (
+      render: (value, product) => (
         <div className="flex items-center gap-1">
           {product?.id ? (
             <>
@@ -403,7 +403,7 @@ export default function Products() {
       />
 
       {/* Stats Cards */}
-      <ProductsStyleStatsCards cards={statsCards} />
+        <ProductsStyleStatsCards cards={statsCards} loading={isLoading} />
 
       {/* Bulk Actions Bar */}
       {selectedProducts.length > 0 && (

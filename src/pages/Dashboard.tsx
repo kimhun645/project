@@ -219,13 +219,21 @@ export default function Dashboard() {
       return acc;
     }, {});
 
-    return Object.entries(categoryStats).map(([categoryId, data]: [string, any]) => ({
-      name: categoryId === 'uncategorized' ? 'ไม่ระบุหมวดหมู่' : `หมวดหมู่ ${categoryId}`,
-      value: data.count,
-      amount: data.value,
-      fill: getRandomColor()
-    }));
-  }, [products]);
+    return Object.entries(categoryStats).map(([categoryId, data]: [string, any]) => {
+      // Find category name from categories array
+      const category = categories.find(cat => cat.id === categoryId);
+      const categoryName = categoryId === 'uncategorized' 
+        ? 'ไม่ระบุหมวดหมู่' 
+        : category?.name || `หมวดหมู่ ${categoryId}`;
+      
+      return {
+        name: categoryName,
+        value: data.count,
+        amount: data.value,
+        fill: getRandomColor()
+      };
+    });
+  }, [products, categories]);
 
   // Quick actions
   const quickActions: QuickAction[] = [
@@ -263,13 +271,13 @@ export default function Dashboard() {
     try {
       setLoading(true);
 
-      const { firestoreService } = await import('@/lib/firestoreService');
+      const { FirestoreService } = await import('@/lib/firestoreService');
 
       const [productsData, movementsData, categoriesData, suppliersData] = await Promise.all([
-        firestoreService.getProducts(),
-        firestoreService.getMovements(),
-        firestoreService.getCategories(),
-        firestoreService.getSuppliers()
+        FirestoreService.getProducts(),
+        FirestoreService.getMovements(),
+        FirestoreService.getCategories(),
+        FirestoreService.getSuppliers()
       ]);
 
       setProducts(productsData || []);

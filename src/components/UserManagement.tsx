@@ -1,586 +1,566 @@
 import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Plus, FileEdit as Edit, Trash2, User as UserIcon, Shield, Crown, Mail, Calendar, CheckCircle, XCircle, Loader2, Search, Filter, MoreVertical } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+import { Plus, Edit, Trash2, Search, Filter, MoreHorizontal, User, Mail, Phone, Calendar, Shield, Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/contexts/AuthContext';
-import { userService, User, CreateUserData, UpdateUserData, UserRole } from '@/lib/userService';
-import { firestoreService } from '@/lib/firestoreService';
-import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
 
-interface UserManagementProps {
-  currentUserRole: string;
+interface User {
+  id: string;
+  displayName: string;
+  email: string;
+  role: string;
+  isActive: boolean;
+  lastLogin?: string;
+  createdAt: string;
+  phone?: string;
+  department?: string;
+  passwordHash?: string;
 }
 
-export function UserManagement({ currentUserRole }: UserManagementProps) {
-  const { toast } = useToast();
-  const { hasPermission } = useAuth();
+export function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [deletingUser, setDeletingUser] = useState<User | null>(null);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
 
-  const [createForm, setCreateForm] = useState<CreateUserData>({
+  // Form states
+  const [formData, setFormData] = useState({
+    displayName: '',
     email: '',
-    password: '',
-    displayName: '',
-    role: 'user'
-  });
-
-  const [editForm, setEditForm] = useState<UpdateUserData>({
-    displayName: '',
-    role: 'user',
+    role: 'staff',
+    phone: '',
+    department: '',
     isActive: true
   });
 
-  const roles = userService.getAllRoles();
-
-  const formatDate = (dateString: string | undefined, formatStr: string): string => {
-    if (!dateString) return 'N/A';
-    try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) return 'N/A';
-      return format(date, formatStr, { locale: th });
-    } catch (error) {
-      return 'N/A';
-    }
-  };
-
+  // Load users
   useEffect(() => {
-    console.log('🚀 useEffect เริ่มต้น');
-    fetchUsers();
+    loadUsers();
   }, []);
 
+  // Filter users
   useEffect(() => {
-    console.log('🔄 users state เปลี่ยน:', users.length, 'ผู้ใช้');
-  }, [users]);
+    let filtered = users;
 
-  const fetchUsers = async () => {
+    if (searchTerm) {
+      filtered = filtered.filter(user => 
+        user.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.email.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    if (roleFilter !== 'all') {
+      filtered = filtered.filter(user => user.role === roleFilter);
+    }
+
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(user => 
+        statusFilter === 'active' ? user.isActive : !user.isActive
+      );
+    }
+
+    setFilteredUsers(filtered);
+  }, [users, searchTerm, roleFilter, statusFilter]);
+
+  const loadUsers = async () => {
+    setIsLoading(true);
     try {
-      console.log('🔄 เริ่มต้น fetchUsers');
-      setIsLoading(true);
-      console.log('🔍 กำลังดึงข้อมูลผู้ใช้ด้วย firestoreService...');
-      const usersData = await firestoreService.getUsers();
-      console.log('✅ ดึงข้อมูลผู้ใช้สำเร็จ:', usersData);
-      console.log('📊 จำนวนผู้ใช้ที่ได้:', usersData.length);
-      setUsers(usersData);
-      console.log('✅ setUsers เรียบร้อย');
-      console.log('🔍 ตรวจสอบ users state ใหม่:', usersData);
-    } catch (error: any) {
-      console.error('❌ ข้อผิดพลาดในการดึงข้อมูลผู้ใช้:', error);
+      // Load from Firestore collection 'users'
+      const { firestoreService } = await import('@/lib/firestoreService');
+      const users = await firestoreService.getUsers();
+      setUsers(users);
+    } catch (error) {
+      console.error('Error loading users:', error);
       toast({
         title: "เกิดข้อผิดพลาด",
-        description: error.message,
+        description: "ไม่สามารถโหลดข้อมูลผู้ใช้ได้",
         variant: "destructive",
       });
     } finally {
       setIsLoading(false);
-      console.log('✅ fetchUsers เสร็จสิ้น');
     }
   };
 
-  const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!createForm.email || !createForm.password || !createForm.displayName) {
-      toast({
-        title: "กรุณากรอกข้อมูลให้ครบถ้วน",
-        description: "กรุณาระบุอีเมล รหัสผ่าน และชื่อผู้ใช้",
-        variant: "destructive",
-      });
-      return;
-    }
-
+  const handleAddUser = async () => {
     try {
-      await userService.createUser(createForm);
-      toast({
-        title: "สร้างผู้ใช้เรียบร้อย",
-        description: `สร้างผู้ใช้ ${createForm.displayName} เรียบร้อยแล้ว`,
-      });
+      const { firestoreService } = await import('@/lib/firestoreService');
+      const newUser: Omit<User, 'id'> = {
+        ...formData,
+        createdAt: new Date().toISOString(),
+        lastLogin: undefined,
+        passwordHash: 'placeholder' // Placeholder, actual password handling would be more complex
+      };
       
-      setCreateForm({ email: '', password: '', displayName: '', role: 'user' });
-      setShowCreateDialog(false);
-      fetchUsers();
-    } catch (error: any) {
+      await firestoreService.addUser(newUser);
+      await loadUsers(); // Reload data
+      setIsAddDialogOpen(false);
+      resetForm();
+      
+      toast({
+        title: "เพิ่มผู้ใช้สำเร็จ",
+        description: `เพิ่มผู้ใช้ ${formData.displayName} เรียบร้อยแล้ว`,
+      });
+    } catch (error) {
+      console.error('Error adding user:', error);
       toast({
         title: "เกิดข้อผิดพลาด",
-        description: error.message,
+        description: "ไม่สามารถเพิ่มผู้ใช้ได้",
         variant: "destructive",
       });
     }
   };
 
-  const handleEditUser = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleEditUser = async () => {
+    if (!selectedUser) return;
     
-    if (!editingUser) return;
-
     try {
-      await userService.updateUser(editingUser.id, editForm);
-      toast({
-        title: "อัปเดตผู้ใช้เรียบร้อย",
-        description: `อัปเดตผู้ใช้ ${editForm.displayName} เรียบร้อยแล้ว`,
-      });
+      const { firestoreService } = await import('@/lib/firestoreService');
+      const updatedUser: Partial<User> = {
+        ...formData
+      };
       
-      setEditingUser(null);
-      fetchUsers();
-    } catch (error: any) {
+      await firestoreService.updateUser(selectedUser.id, updatedUser);
+      await loadUsers(); // Reload data
+      setIsEditDialogOpen(false);
+      setSelectedUser(null);
+      resetForm();
+      
+      toast({
+        title: "แก้ไขผู้ใช้สำเร็จ",
+        description: `แก้ไขข้อมูลผู้ใช้ ${formData.displayName} เรียบร้อยแล้ว`,
+      });
+    } catch (error) {
+      console.error('Error editing user:', error);
       toast({
         title: "เกิดข้อผิดพลาด",
-        description: error.message,
+        description: "ไม่สามารถแก้ไขผู้ใช้ได้",
         variant: "destructive",
       });
     }
   };
 
-  const handleDeleteUser = async (userToDelete?: User) => {
-    const targetUser = userToDelete || deletingUser;
-    console.log('🔍 handleDeleteUser ถูกเรียกด้วย:', { userToDelete, deletingUser, targetUser });
-    
-    if (!targetUser) {
-      console.log('❌ ไม่มี targetUser');
-      return;
-    }
-
-    // ตรวจสอบการยืนยัน
-    const expectedConfirmation = 'delete';
-    if (deleteConfirmation !== expectedConfirmation) {
-      toast({
-        title: "การยืนยันไม่ถูกต้อง",
-        description: `กรุณาพิมพ์ "${expectedConfirmation}" เพื่อยืนยันการลบ`,
-        variant: "destructive",
-      });
-      return;
-    }
-
+  const handleDeleteUser = async (userId: string) => {
     try {
-      console.log('🗑️ กำลังลบผู้ใช้ด้วย firestoreService:', targetUser.id, targetUser.displayName);
-      console.log('🔍 ตรวจสอบ targetUser object:', targetUser);
-      console.log('🔍 ตรวจสอบ firestoreService:', firestoreService);
-      
-      await firestoreService.deleteUser(targetUser.id);
-      console.log('✅ ลบผู้ใช้สำเร็จ');
+      const { firestoreService } = await import('@/lib/firestoreService');
+      await firestoreService.deleteUser(userId);
+      await loadUsers(); // Reload data
       
       toast({
-        title: "ลบผู้ใช้เรียบร้อย",
-        description: `ลบผู้ใช้ ${targetUser.displayName} เรียบร้อยแล้ว`,
+        title: "ลบผู้ใช้สำเร็จ",
+        description: "ลบผู้ใช้เรียบร้อยแล้ว",
       });
-      
-      console.log('🔍 กำลังปิด dialog และล้าง state');
-      setDeletingUser(null);
-      setShowDeleteDialog(false);
-      setDeleteConfirmation('');
-      console.log('🔍 กำลัง refresh ข้อมูลผู้ใช้');
-      fetchUsers();
-      console.log('✅ การลบเสร็จสิ้น');
-    } catch (error: any) {
-      console.error('❌ ข้อผิดพลาดในการลบผู้ใช้:', error);
-      console.error('❌ Error details:', {
-        message: error.message,
-        code: error.code,
-        stack: error.stack
-      });
+    } catch (error) {
+      console.error('Error deleting user:', error);
       toast({
         title: "เกิดข้อผิดพลาด",
-        description: error.message,
+        description: "ไม่สามารถลบผู้ใช้ได้",
         variant: "destructive",
       });
-      console.log('🔍 กำลังปิด dialog เนื่องจาก error');
-      setDeletingUser(null);
-      setShowDeleteDialog(false);
-      setDeleteConfirmation('');
     }
   };
 
-  const openEditDialog = (user: User) => {
-    setEditingUser(user);
-    setEditForm({
-      displayName: user.displayName,
-      role: user.role,
-      isActive: user.isActive
+  const handleToggleStatus = async (userId: string) => {
+    try {
+      const { firestoreService } = await import('@/lib/firestoreService');
+      const user = users.find(u => u.id === userId);
+      if (!user) return;
+      
+      await firestoreService.updateUser(userId, {
+        isActive: !user.isActive
+      });
+      
+      await loadUsers(); // Reload data
+      
+      toast({
+        title: "เปลี่ยนสถานะสำเร็จ",
+        description: "เปลี่ยนสถานะผู้ใช้เรียบร้อยแล้ว",
+      });
+    } catch (error) {
+      console.error('Error toggling status:', error);
+      toast({
+        title: "เกิดข้อผิดพลาด",
+        description: "ไม่สามารถเปลี่ยนสถานะได้",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      displayName: '',
+      email: '',
+      role: 'staff',
+      phone: '',
+      department: '',
+      isActive: true
     });
   };
 
-  const getRoleIcon = (role: string) => {
+  const openEditDialog = (user: User) => {
+    setSelectedUser(user);
+    setFormData({
+      displayName: user.displayName,
+      email: user.email,
+      role: user.role,
+      phone: user.phone || '',
+      department: user.department || '',
+      isActive: user.isActive
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const getRoleBadgeColor = (role: string) => {
     switch (role) {
-      case 'admin': return <Crown className="h-4 w-4" />;
-      case 'manager': return <Shield className="h-4 w-4" />;
-      default: return <UserIcon className="h-4 w-4" />;
+      case 'admin': return 'bg-red-100 text-red-800';
+      case 'manager': return 'bg-blue-100 text-blue-800';
+      case 'staff': return 'bg-green-100 text-green-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
 
-  const getRoleColor = (role: string) => {
-    const roleInfo = userService.getRoleInfo(role);
-    return roleInfo?.color || 'gray';
+  const getStatusBadgeColor = (isActive: boolean) => {
+    return isActive 
+      ? 'bg-green-100 text-green-800' 
+      : 'bg-gray-100 text-gray-800';
   };
-
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = (user.displayName?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-                         (user.email?.toLowerCase() || '').includes(searchTerm.toLowerCase());
-    const matchesRole = roleFilter === 'all' || user.role === roleFilter;
-    const matchesStatus = statusFilter === 'all' ||
-                         (statusFilter === 'active' && user.isActive) ||
-                         (statusFilter === 'inactive' && !user.isActive);
-
-    return matchesSearch && matchesRole && matchesStatus;
-  });
-
-  const canManageUsers = hasPermission('users:read');
-
-  if (!canManageUsers) {
-    return (
-      <Card>
-        <CardContent className="p-6 text-center">
-          <Shield className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-600 mb-2">ไม่มีสิทธิ์เข้าถึง</h3>
-          <p className="text-gray-500">คุณไม่มีสิทธิ์ในการจัดการผู้ใช้</p>
-        </CardContent>
-      </Card>
-    );
-  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">จัดการผู้ใช้</h2>
-          <p className="text-gray-600">จัดการผู้ใช้และสิทธิ์การเข้าถึงระบบ</p>
+          <p className="text-gray-600">จัดการข้อมูลผู้ใช้และสิทธิ์การเข้าถึง</p>
         </div>
-        {hasPermission('users:create') && (
-          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-            <DialogTrigger asChild>
-              <Button className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700">
-                <Plus className="h-4 w-4 mr-2" />
+        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="bg-blue-600 hover:bg-blue-700">
+              <Plus className="h-4 w-4 mr-2" />
+              เพิ่มผู้ใช้
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>เพิ่มผู้ใช้ใหม่</DialogTitle>
+              <DialogDescription>
+                กรอกข้อมูลผู้ใช้ที่ต้องการเพิ่ม
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="displayName">ชื่อ-นามสกุล</Label>
+                <Input
+                  id="displayName"
+                  value={formData.displayName}
+                  onChange={(e) => setFormData(prev => ({ ...prev, displayName: e.target.value }))}
+                  placeholder="กรอกชื่อ-นามสกุล"
+                />
+              </div>
+              <div>
+                <Label htmlFor="email">อีเมล</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                  placeholder="กรอกอีเมล"
+                />
+              </div>
+              <div>
+                <Label htmlFor="role">บทบาท</Label>
+                <Select value={formData.role} onValueChange={(value) => setFormData(prev => ({ ...prev, role: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="เลือกบทบาท" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">ผู้ดูแลระบบ</SelectItem>
+                    <SelectItem value="manager">ผู้จัดการศูนย์</SelectItem>
+                    <SelectItem value="staff">เจ้าหน้าที่</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="phone">เบอร์โทรศัพท์</Label>
+                <Input
+                  id="phone"
+                  value={formData.phone}
+                  onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                  placeholder="กรอกเบอร์โทรศัพท์"
+                />
+              </div>
+              <div>
+                <Label htmlFor="department">แผนก</Label>
+                <Input
+                  id="department"
+                  value={formData.department}
+                  onChange={(e) => setFormData(prev => ({ ...prev, department: e.target.value }))}
+                  placeholder="กรอกแผนก"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                ยกเลิก
+              </Button>
+              <Button onClick={handleAddUser}>
                 เพิ่มผู้ใช้
               </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>เพิ่มผู้ใช้ใหม่</DialogTitle>
-                <DialogDescription>
-                  สร้างบัญชีผู้ใช้ใหม่ในระบบ
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleCreateUser} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">อีเมล</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={createForm.email}
-                    onChange={(e) => setCreateForm({...createForm, email: e.target.value})}
-                    placeholder="user@example.com"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">รหัสผ่าน</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={createForm.password}
-                    onChange={(e) => setCreateForm({...createForm, password: e.target.value})}
-                    placeholder="รหัสผ่าน"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="displayName">ชื่อผู้ใช้</Label>
-                  <Input
-                    id="displayName"
-                    value={createForm.displayName}
-                    onChange={(e) => setCreateForm({...createForm, displayName: e.target.value})}
-                    placeholder="ชื่อผู้ใช้"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="role">บทบาท</Label>
-                  <Select value={createForm.role} onValueChange={(value: any) => setCreateForm({...createForm, role: value})}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {roles.map(role => (
-                        <SelectItem key={role.id} value={role.id}>
-                          <div className="flex items-center gap-2">
-                            {getRoleIcon(role.id)}
-                            {role.name}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={() => setShowCreateDialog(false)}>
-                    ยกเลิก
-                  </Button>
-                  <Button type="submit">สร้างผู้ใช้</Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-        )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Filters */}
       <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[200px]">
+        <CardContent className="p-6">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <Label htmlFor="search">ค้นหา</Label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <Input
-                  placeholder="ค้นหาผู้ใช้..."
+                  id="search"
+                  placeholder="ค้นหาตามชื่อหรืออีเมล"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
                 />
               </div>
             </div>
-            <Select value={roleFilter} onValueChange={setRoleFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="บทบาท" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">ทุกบทบาท</SelectItem>
-                {roles.map(role => (
-                  <SelectItem key={role.id} value={role.id}>
-                    {role.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="สถานะ" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">ทุกสถานะ</SelectItem>
-                <SelectItem value="active">ใช้งาน</SelectItem>
-                <SelectItem value="inactive">ไม่ใช้งาน</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="sm:w-48">
+              <Label htmlFor="role-filter">บทบาท</Label>
+              <Select value={roleFilter} onValueChange={setRoleFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="เลือกบทบาท" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">ทั้งหมด</SelectItem>
+                  <SelectItem value="admin">ผู้ดูแลระบบ</SelectItem>
+                  <SelectItem value="manager">ผู้จัดการศูนย์</SelectItem>
+                  <SelectItem value="staff">เจ้าหน้าที่</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="sm:w-48">
+              <Label htmlFor="status-filter">สถานะ</Label>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="เลือกสถานะ" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">ทั้งหมด</SelectItem>
+                  <SelectItem value="active">ใช้งาน</SelectItem>
+                  <SelectItem value="inactive">ไม่ใช้งาน</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Users List */}
-      <div className="grid gap-4">
-        {isLoading ? (
-          <Card>
-            <CardContent className="p-6 text-center">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-              <p>กำลังโหลดข้อมูล...</p>
-            </CardContent>
-          </Card>
-        ) : filteredUsers.length === 0 ? (
-          <Card>
-            <CardContent className="p-6 text-center">
-              <UserIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-600 mb-2">ไม่พบผู้ใช้</h3>
-              <p className="text-gray-500">ไม่พบผู้ใช้ที่ตรงกับเงื่อนไขการค้นหา</p>
-            </CardContent>
-          </Card>
-        ) : (
-          filteredUsers.map(user => (
-            <Card key={user.id}>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="p-2 bg-gray-100 rounded-full">
-                      {getRoleIcon(user.role)}
+      {/* Users Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <User className="h-5 w-5" />
+            รายการผู้ใช้ ({filteredUsers.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="text-gray-500 mt-2">กำลังโหลดข้อมูล...</p>
+            </div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="text-center py-8">
+              <User className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-500">ไม่พบข้อมูลผู้ใช้</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredUsers.map((user) => (
+                <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                      <User className="h-5 w-5 text-blue-600" />
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">{user.displayName}</h3>
-                      <p className="text-sm text-gray-600 flex items-center gap-2">
-                        <Mail className="h-3 w-3" />
-                        {user.email}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant="outline" className={`text-${getRoleColor(user.role)}-600 border-${getRoleColor(user.role)}-200`}>
-                          {userService.getRoleInfo(user.role)?.name}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-medium text-gray-900">{user.displayName}</h3>
+                        <Badge className={getRoleBadgeColor(user.role)}>
+                          {user.role === 'admin' ? 'ผู้ดูแลระบบ' :
+                           user.role === 'manager' ? 'ผู้จัดการศูนย์' :
+                           user.role === 'staff' ? 'เจ้าหน้าที่' : user.role}
                         </Badge>
-                        {user.isActive ? (
-                          <Badge variant="outline" className="text-green-600 border-green-200">
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            ใช้งาน
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-red-600 border-red-200">
-                            <XCircle className="h-3 w-3 mr-1" />
-                            ไม่ใช้งาน
-                          </Badge>
+                        <Badge className={getStatusBadgeColor(user.isActive)}>
+                          {user.isActive ? 'ใช้งาน' : 'ไม่ใช้งาน'}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-4 text-sm text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <Mail className="h-4 w-4" />
+                          {user.email}
+                        </span>
+                        {user.phone && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-4 w-4" />
+                            {user.phone}
+                          </span>
+                        )}
+                        {user.department && (
+                          <span>{user.department}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-gray-400 mt-1">
+                        <span>สร้าง: {user.createdAt}</span>
+                        {user.lastLogin && (
+                          <span>เข้าสู่ระบบล่าสุด: {user.lastLogin}</span>
                         )}
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="text-right text-sm text-gray-500">
-                      <p>สร้าง: {formatDate(user.createdAt, 'dd/MM/yyyy')}</p>
-                      {user.lastLoginAt && (
-                        <p>เข้าสู่ระบบล่าสุด: {formatDate(user.lastLoginAt, 'dd/MM/yyyy HH:mm')}</p>
-                      )}
-                    </div>
-                    {hasPermission('users:update') && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEditDialog(user)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                    )}
-                    {hasPermission('users:delete') && (
-                      <AlertDialog open={showDeleteDialog && deletingUser?.id === user.id} onOpenChange={(open) => {
-                        if (!open) {
-                          setShowDeleteDialog(false);
-                          setDeletingUser(null);
-                        }
-                      }}>
-                        <AlertDialogTrigger asChild>
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => {
-                              console.log('🔍 ปุ่มลบถูกคลิก');
-                              console.log('🔍 User ที่จะลบ:', user);
-                              setDeletingUser(user);
-                              setShowDeleteDialog(true);
-                              console.log('🔍 Dialog ถูกเปิด');
-                            }}
+                    <Switch
+                      checked={user.isActive}
+                      onCheckedChange={() => handleToggleStatus(user.id)}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openEditDialog(user)}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>ยืนยันการลบ</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            คุณแน่ใจหรือไม่ที่จะลบผู้ใช้ {user.name}? การดำเนินการนี้ไม่สามารถย้อนกลับได้
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDeleteUser(user.id)}
+                            className="bg-red-600 hover:bg-red-700"
                           >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>ยืนยันการลบ</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              คุณแน่ใจหรือไม่ที่จะลบผู้ใช้ {user.displayName}? การดำเนินการนี้ไม่สามารถย้อนกลับได้
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <div className="py-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="deleteConfirmation" className="text-sm font-medium">
-                                พิมพ์ <span className="font-bold text-red-600">delete</span> เพื่อยืนยันการลบ
-                              </Label>
-                              <Input
-                                id="deleteConfirmation"
-                                value={deleteConfirmation}
-                                onChange={(e) => setDeleteConfirmation(e.target.value)}
-                                placeholder="delete"
-                                className="w-full"
-                              />
-                            </div>
-                          </div>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel 
-                              onClick={() => {
-                                setDeleteConfirmation('');
-                                setDeletingUser(null);
-                                setShowDeleteDialog(false);
-                              }}
-                            >
-                              ยกเลิก
-                            </AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => {
-                                console.log('🔍 AlertDialogAction ถูกคลิก');
-                                console.log('🔍 User ที่จะลบ:', user);
-                                console.log('🔍 การยืนยัน:', deleteConfirmation);
-                                handleDeleteUser(user);
-                              }}
-                              className="bg-red-600 hover:bg-red-700"
-                              disabled={deleteConfirmation !== 'delete'}
-                            >
-                              ลบ
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    )}
+                            ลบ
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          ))
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      {/* Edit User Dialog */}
-      {editingUser && (
-        <Dialog open={!!editingUser} onOpenChange={() => setEditingUser(null)}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>แก้ไขผู้ใช้</DialogTitle>
-              <DialogDescription>
-                แก้ไขข้อมูลผู้ใช้ {editingUser.displayName}
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleEditUser} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="editDisplayName">ชื่อผู้ใช้</Label>
-                <Input
-                  id="editDisplayName"
-                  value={editForm.displayName}
-                  onChange={(e) => setEditForm({...editForm, displayName: e.target.value})}
-                  placeholder="ชื่อผู้ใช้"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="editRole">บทบาท</Label>
-                <Select value={editForm.role} onValueChange={(value: any) => setEditForm({...editForm, role: value})}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {roles.map(role => (
-                      <SelectItem key={role.id} value={role.id}>
-                        <div className="flex items-center gap-2">
-                          {getRoleIcon(role.id)}
-                          {role.name}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="editIsActive"
-                  checked={editForm.isActive}
-                  onCheckedChange={(checked) => setEditForm({...editForm, isActive: checked})}
-                />
-                <Label htmlFor="editIsActive">ใช้งาน</Label>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setEditingUser(null)}>
-                  ยกเลิก
-                </Button>
-                <Button type="submit">บันทึก</Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
-      )}
+      {/* Edit Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>แก้ไขข้อมูลผู้ใช้</DialogTitle>
+            <DialogDescription>
+              แก้ไขข้อมูลผู้ใช้ {selectedUser?.displayName}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="edit-displayName">ชื่อ-นามสกุล</Label>
+              <Input
+                id="edit-displayName"
+                value={formData.displayName}
+                onChange={(e) => setFormData(prev => ({ ...prev, displayName: e.target.value }))}
+                placeholder="กรอกชื่อ-นามสกุล"
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-email">อีเมล</Label>
+              <Input
+                id="edit-email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                placeholder="กรอกอีเมล"
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-role">บทบาท</Label>
+              <Select value={formData.role} onValueChange={(value) => setFormData(prev => ({ ...prev, role: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="เลือกบทบาท" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">ผู้ดูแลระบบ</SelectItem>
+                  <SelectItem value="manager">ผู้จัดการศูนย์</SelectItem>
+                  <SelectItem value="staff">เจ้าหน้าที่</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="edit-phone">เบอร์โทรศัพท์</Label>
+              <Input
+                id="edit-phone"
+                value={formData.phone}
+                onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                placeholder="กรอกเบอร์โทรศัพท์"
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-department">แผนก</Label>
+              <Input
+                id="edit-department"
+                value={formData.department}
+                onChange={(e) => setFormData(prev => ({ ...prev, department: e.target.value }))}
+                placeholder="กรอกแผนก"
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-status">สถานะ</Label>
+              <Select value={formData.isActive ? 'active' : 'inactive'} onValueChange={(value) => setFormData(prev => ({ ...prev, isActive: value === 'active' }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="เลือกสถานะ" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">ใช้งาน</SelectItem>
+                  <SelectItem value="inactive">ไม่ใช้งาน</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              ยกเลิก
+            </Button>
+            <Button onClick={handleEditUser}>
+              บันทึกการเปลี่ยนแปลง
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

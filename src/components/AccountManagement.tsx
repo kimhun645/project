@@ -1,576 +1,572 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Search, 
-  Filter,
-  FileText,
-  CreditCard,
-  AlertTriangle,
-  CheckCircle,
-  RefreshCw,
-  Upload,
-  Download,
-  FileSpreadsheet
-} from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+import { Plus, Edit, Trash2, Search, Hash, FileText, DollarSign, Building, Tag, CheckCircle, XCircle, Copy, Download, Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { FirestoreService } from '@/lib/firestoreService';
-import * as XLSX from 'xlsx';
 
 interface AccountCode {
   id: string;
-  code?: string;
+  code: string;
   name: string;
-  type?: string;
-  created_at?: any;
-  updated_at?: any;
+  description?: string;
+  category: string;
+  isActive: boolean;
+  createdAt: string;
+  createdBy: string;
+  updatedAt?: string;
+  updatedBy?: string;
 }
 
 export function AccountManagement() {
-  const { toast } = useToast();
   const [accountCodes, setAccountCodes] = useState<AccountCode[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [filteredAccountCodes, setFilteredAccountCodes] = useState<AccountCode[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
-  const [editingAccount, setEditingAccount] = useState<AccountCode | null>(null);
-  const [newAccount, setNewAccount] = useState({ code: '', name: '', type: 'account' });
-  const [importedData, setImportedData] = useState<any[]>([]);
-  const [isImporting, setIsImporting] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isBulkImportDialogOpen, setIsBulkImportDialogOpen] = useState(false);
+  const [selectedAccountCode, setSelectedAccountCode] = useState<AccountCode | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
 
+  // Form states
+  const [formData, setFormData] = useState({
+    code: '',
+    name: '',
+    description: '',
+    category: 'revenue',
+    isActive: true
+  });
+
+  const [bulkImportData, setBulkImportData] = useState('');
+
+  // Load account codes
   useEffect(() => {
     loadAccountCodes();
   }, []);
 
+  // Filter account codes
+  useEffect(() => {
+    let filtered = accountCodes;
+
+    if (searchTerm) {
+      filtered = filtered.filter(accountCode => 
+        accountCode.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        accountCode.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (accountCode.description && accountCode.description.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+    }
+
+    if (categoryFilter !== 'all') {
+      filtered = filtered.filter(accountCode => accountCode.category === categoryFilter);
+    }
+
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(accountCode => 
+        statusFilter === 'active' ? accountCode.isActive : !accountCode.isActive
+      );
+    }
+
+    setFilteredAccountCodes(filtered);
+  }, [accountCodes, searchTerm, categoryFilter, statusFilter]);
+
   const loadAccountCodes = async () => {
+    setIsLoading(true);
     try {
-      setLoading(true);
-      const codes = await FirestoreService.getAccountCodes();
-      setAccountCodes(codes);
+      // Load from Firestore collection 'accountCodes'
+      const { firestoreService } = await import('@/lib/firestoreService');
+      const accountCodes = await firestoreService.getAccountCodes();
+      setAccountCodes(accountCodes);
     } catch (error) {
       console.error('Error loading account codes:', error);
       toast({
         title: "เกิดข้อผิดพลาด",
-        description: "ไม่สามารถโหลดข้อมูล Account Codes ได้",
+        description: "ไม่สามารถโหลดข้อมูลรหัสบัญชีได้",
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const handleAddAccount = async () => {
+  const handleAddAccountCode = async () => {
     try {
-      if (!newAccount.name.trim()) {
-        toast({
-          title: "ข้อมูลไม่ครบถ้วน",
-          description: "กรุณาระบุชื่อ Account Code",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      await FirestoreService.addAccountCode({
-        ...newAccount,
-        created_at: new Date(),
-        updated_at: new Date()
-      });
+      const { firestoreService } = await import('@/lib/firestoreService');
+      const newAccountCode: Omit<AccountCode, 'id'> = {
+        ...formData,
+        createdAt: new Date().toISOString(),
+        createdBy: 'current-user', // Replace with actual user ID
+        updatedAt: new Date().toISOString(),
+        updatedBy: 'current-user'
+      };
+      
+      await firestoreService.addAccountCode(newAccountCode);
+      await loadAccountCodes(); // Reload data
+      setIsAddDialogOpen(false);
+      resetForm();
 
       toast({
-        title: "เพิ่ม Account Code สำเร็จ",
-        description: "Account Code ถูกเพิ่มเรียบร้อยแล้ว",
+        title: "เพิ่มรหัสบัญชีสำเร็จ",
+        description: `เพิ่มรหัสบัญชี ${formData.code} เรียบร้อยแล้ว`,
       });
-
-      setNewAccount({ code: '', name: '', type: 'account' });
-      setIsAddDialogOpen(false);
-      loadAccountCodes();
     } catch (error) {
       console.error('Error adding account code:', error);
       toast({
         title: "เกิดข้อผิดพลาด",
-        description: "ไม่สามารถเพิ่ม Account Code ได้",
+        description: "ไม่สามารถเพิ่มรหัสบัญชีได้",
         variant: "destructive",
       });
     }
   };
 
-  const handleEditAccount = async () => {
-    if (!editingAccount) return;
-
+  const handleEditAccountCode = async () => {
+    if (!selectedAccountCode) return;
+    
     try {
-      if (!editingAccount.name.trim()) {
-        toast({
-          title: "ข้อมูลไม่ครบถ้วน",
-          description: "กรุณาระบุชื่อ Account Code",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      await FirestoreService.updateAccountCode(editingAccount.id, {
-        ...editingAccount,
-        updated_at: new Date()
-      });
+      const { firestoreService } = await import('@/lib/firestoreService');
+      const updatedAccountCode: Partial<AccountCode> = {
+        ...formData,
+        updatedAt: new Date().toISOString(),
+        updatedBy: 'current-user'
+      };
+      
+      await firestoreService.updateAccountCode(selectedAccountCode.id, updatedAccountCode);
+      await loadAccountCodes(); // Reload data
+      setIsEditDialogOpen(false);
+      setSelectedAccountCode(null);
+      resetForm();
 
       toast({
-        title: "แก้ไข Account Code สำเร็จ",
-        description: "Account Code ถูกแก้ไขเรียบร้อยแล้ว",
+        title: "แก้ไขรหัสบัญชีสำเร็จ",
+        description: `แก้ไขข้อมูลรหัสบัญชี ${formData.code} เรียบร้อยแล้ว`,
       });
-
-      setEditingAccount(null);
-      setIsEditDialogOpen(false);
-      loadAccountCodes();
     } catch (error) {
-      console.error('Error updating account code:', error);
+      console.error('Error editing account code:', error);
       toast({
         title: "เกิดข้อผิดพลาด",
-        description: "ไม่สามารถแก้ไข Account Code ได้",
+        description: "ไม่สามารถแก้ไขรหัสบัญชีได้",
         variant: "destructive",
       });
     }
   };
 
-  const handleDeleteAccount = async (id: string) => {
-    if (!confirm('คุณแน่ใจหรือไม่ที่จะลบ Account Code นี้?')) return;
-
+  const handleDeleteAccountCode = async (accountCodeId: string) => {
     try {
-      await FirestoreService.deleteAccountCode(id);
+      const { firestoreService } = await import('@/lib/firestoreService');
+      await firestoreService.deleteAccountCode(accountCodeId);
+      await loadAccountCodes(); // Reload data
+      
       toast({
-        title: "ลบ Account Code สำเร็จ",
-        description: "Account Code ถูกลบเรียบร้อยแล้ว",
+        title: "ลบรหัสบัญชีสำเร็จ",
+        description: "ลบรหัสบัญชีเรียบร้อยแล้ว",
       });
-      loadAccountCodes();
     } catch (error) {
       console.error('Error deleting account code:', error);
       toast({
         title: "เกิดข้อผิดพลาด",
-        description: "ไม่สามารถลบ Account Code ได้",
+        description: "ไม่สามารถลบรหัสบัญชีได้",
         variant: "destructive",
       });
     }
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-
-        // แปลงข้อมูล Excel เป็นรูปแบบที่ต้องการ
-        const processedData = jsonData
-          .filter((row: any) => row.length > 0 && row[0] && row[1]) // กรองแถวที่ว่าง
-          .map((row: any, index: number) => ({
-            code: row[0]?.toString().trim() || '',
-            name: row[1]?.toString().trim() || '',
-            type: row[2]?.toString().trim() || 'account',
-            rowNumber: index + 2 // บรรทัดที่ใน Excel (เริ่มจาก 2 เพราะมี header)
-          }));
-
-        setImportedData(processedData);
+  const handleToggleStatus = async (accountCodeId: string) => {
+    try {
+      const { firestoreService } = await import('@/lib/firestoreService');
+      const accountCode = accountCodes.find(ac => ac.id === accountCodeId);
+      if (!accountCode) return;
+      
+      await firestoreService.updateAccountCode(accountCodeId, {
+        isActive: !accountCode.isActive,
+        updatedAt: new Date().toISOString(),
+        updatedBy: 'current-user'
+      });
+      
+      await loadAccountCodes(); // Reload data
+      
         toast({
-          title: "นำเข้าไฟล์สำเร็จ",
-          description: `พบข้อมูล ${processedData.length} รายการ`,
+        title: "เปลี่ยนสถานะสำเร็จ",
+        description: "เปลี่ยนสถานะรหัสบัญชีเรียบร้อยแล้ว",
         });
       } catch (error) {
-        console.error('Error reading Excel file:', error);
+      console.error('Error toggling status:', error);
         toast({
           title: "เกิดข้อผิดพลาด",
-          description: "ไม่สามารถอ่านไฟล์ Excel ได้",
+        description: "ไม่สามารถเปลี่ยนสถานะได้",
           variant: "destructive",
         });
       }
     };
 
-    reader.readAsArrayBuffer(file);
-  };
-
-  const handleImportData = async () => {
-    if (importedData.length === 0) {
-      toast({
-        title: "ไม่มีข้อมูล",
-        description: "กรุณาเลือกไฟล์ Excel ก่อน",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsImporting(true);
-    let successCount = 0;
-    let errorCount = 0;
-
+  const handleBulkImport = async () => {
     try {
-      for (const item of importedData) {
-        try {
-          await FirestoreService.addAccountCode({
-            code: item.code || undefined,
-            name: item.name,
-            type: item.type,
-            created_at: new Date(),
-            updated_at: new Date()
-          });
-          successCount++;
-        } catch (error) {
-          console.error(`Error importing item ${item.rowNumber}:`, error);
-          errorCount++;
-        }
-      }
-
-      toast({
-        title: "นำเข้าข้อมูลเสร็จสิ้น",
-        description: `สำเร็จ: ${successCount} รายการ, ผิดพลาด: ${errorCount} รายการ`,
+      // Parse CSV data
+      const lines = bulkImportData.split('\n').filter(line => line.trim());
+      const accountCodes = lines.map(line => {
+        const [code, name, description, category] = line.split(',').map(item => item.trim());
+        return {
+          code,
+          name,
+          description: description || '',
+          category: category || 'revenue',
+          isActive: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'current-user',
+          updatedAt: new Date().toISOString(),
+          updatedBy: 'current-user'
+        };
       });
 
-      setImportedData([]);
-      setIsImportDialogOpen(false);
-      loadAccountCodes();
+      const { firestoreService } = await import('@/lib/firestoreService');
+      await firestoreService.bulkAddAccountCodes(accountCodes);
+      await loadAccountCodes(); // Reload data
+      
+      setIsBulkImportDialogOpen(false);
+      setBulkImportData('');
+      
+      toast({
+        title: "นำเข้าข้อมูลสำเร็จ",
+        description: `นำเข้ารหัสบัญชี ${accountCodes.length} รายการเรียบร้อยแล้ว`,
+      });
     } catch (error) {
-      console.error('Error importing data:', error);
+      console.error('Error bulk importing:', error);
       toast({
         title: "เกิดข้อผิดพลาด",
         description: "ไม่สามารถนำเข้าข้อมูลได้",
         variant: "destructive",
       });
-    } finally {
-      setIsImporting(false);
     }
   };
 
-  const downloadTemplate = () => {
-    const templateData = [
-      ['Code', 'Name', 'Type'],
-      ['53010200', 'ค่าไฟฟ้า', 'account'],
-      ['53010300', 'ค่าน้ำประปา', 'account'],
-      ['', 'หมวด 1 : ค่าใช้จ่ายเกี่ยวกับพนักงาน', 'header']
-    ];
+  const handleExportData = async () => {
+    try {
+      const csvContent = filteredAccountCodes.map(ac => 
+        `${ac.code},${ac.name},${ac.description || ''},${ac.category},${ac.isActive ? 'active' : 'inactive'}`
+      ).join('\n');
+      
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `account-codes-${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
 
-    const worksheet = XLSX.utils.aoa_to_sheet(templateData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Account Codes');
-
-    XLSX.writeFile(workbook, 'account-codes-template.xlsx');
+      toast({
+        title: "ส่งออกข้อมูลสำเร็จ",
+        description: "ส่งออกข้อมูลรหัสบัญชีเรียบร้อยแล้ว",
+      });
+    } catch (error) {
+      console.error('Error exporting data:', error);
+      toast({
+        title: "เกิดข้อผิดพลาด",
+        description: "ไม่สามารถส่งออกข้อมูลได้",
+        variant: "destructive",
+      });
+    }
   };
 
-  const filteredAccounts = accountCodes.filter(account => {
-    const matchesSearch = account.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (account.code && account.code.includes(searchTerm));
-    const matchesFilter = filterType === 'all' || account.type === filterType;
-    return matchesSearch && matchesFilter;
-  });
+  const resetForm = () => {
+    setFormData({
+      code: '',
+      name: '',
+      description: '',
+      category: 'revenue',
+      isActive: true
+    });
+  };
 
-  const accountCount = accountCodes.filter(acc => acc.type !== 'header').length;
-  const headerCount = accountCodes.filter(acc => acc.type === 'header').length;
+  const openEditDialog = (accountCode: AccountCode) => {
+    setSelectedAccountCode(accountCode);
+    setFormData({
+      code: accountCode.code,
+      name: accountCode.name,
+      description: accountCode.description || '',
+      category: accountCode.category,
+      isActive: accountCode.isActive
+    });
+    setIsEditDialogOpen(true);
+  };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <RefreshCw className="h-6 w-6 animate-spin" />
-        <span className="ml-2">กำลังโหลดข้อมูล...</span>
-      </div>
-    );
-  }
+  const getCategoryBadgeColor = (category: string) => {
+    switch (category) {
+      case 'revenue': return 'bg-green-100 text-green-800';
+      case 'expense': return 'bg-red-100 text-red-800';
+      case 'asset': return 'bg-blue-100 text-blue-800';
+      case 'liability': return 'bg-yellow-100 text-yellow-800';
+      case 'equity': return 'bg-purple-100 text-purple-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getStatusBadgeColor = (isActive: boolean) => {
+    return isActive 
+      ? 'bg-green-100 text-green-800' 
+      : 'bg-gray-100 text-gray-800';
+  };
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">จัดการ Account Codes</h2>
-          <p className="text-muted-foreground">
-            จัดการรหัสบัญชีและหมวดหมู่ค่าใช้จ่าย
-          </p>
+          <h2 className="text-2xl font-bold text-gray-900">จัดการรหัสบัญชี</h2>
+          <p className="text-gray-600">จัดการรหัสบัญชีสำหรับระบบบัญชี</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button onClick={loadAccountCodes} variant="outline" size="sm">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            รีเฟรช
-          </Button>
-          <Button onClick={downloadTemplate} variant="outline" size="sm">
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExportData}>
             <Download className="h-4 w-4 mr-2" />
-            ดาวน์โหลด Template
+            ส่งออก
           </Button>
-          <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+          <Dialog open={isBulkImportDialogOpen} onOpenChange={setIsBulkImportDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="outline">
                 <Upload className="h-4 w-4 mr-2" />
-                นำเข้า Excel
+                นำเข้า
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-4xl">
-              <DialogHeader>
-                <DialogTitle>นำเข้าข้อมูล Account Codes จาก Excel</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="excel-file">เลือกไฟล์ Excel</Label>
-                  <Input
-                    id="excel-file"
-                    type="file"
-                    accept=".xlsx,.xls"
-                    onChange={handleFileUpload}
-                    ref={fileInputRef}
-                    className="mt-2"
-                  />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    รองรับไฟล์ .xlsx และ .xls
-                  </p>
-                </div>
-                
-                {importedData.length > 0 && (
-                  <div>
-                    <Label>ข้อมูลที่จะนำเข้า ({importedData.length} รายการ)</Label>
-                    <div className="max-h-60 overflow-y-auto border rounded-md p-4 mt-2">
-                      <div className="space-y-2">
-                        {importedData.map((item, index) => (
-                          <div key={index} className="flex items-center gap-2 p-2 bg-muted rounded">
-                            {item.code && <Badge variant="outline">{item.code}</Badge>}
-                            <span className="flex-1">{item.name}</span>
-                            <Badge variant={item.type === 'header' ? 'secondary' : 'default'}>
-                              {item.type}
-                            </Badge>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsImportDialogOpen(false)}>
-                  ยกเลิก
-                </Button>
-                <Button 
-                  onClick={handleImportData} 
-                  disabled={importedData.length === 0 || isImporting}
-                >
-                  {isImporting ? (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      กำลังนำเข้า...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="h-4 w-4 mr-2" />
-                      นำเข้าข้อมูล
-                    </>
-                  )}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
           </Dialog>
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
-              <Button>
+              <Button className="bg-blue-600 hover:bg-blue-700">
                 <Plus className="h-4 w-4 mr-2" />
-                เพิ่ม Account Code
+                เพิ่มรหัสบัญชี
               </Button>
             </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>เพิ่ม Account Code ใหม่</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="code">รหัส (ไม่บังคับ)</Label>
-                  <Input
-                    id="code"
-                    value={newAccount.code}
-                    onChange={(e) => setNewAccount({ ...newAccount, code: e.target.value })}
-                    placeholder="เช่น 53010200"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="name">ชื่อ *</Label>
-                  <Input
-                    id="name"
-                    value={newAccount.name}
-                    onChange={(e) => setNewAccount({ ...newAccount, name: e.target.value })}
-                    placeholder="เช่น ค่าไฟฟ้า"
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="type">ประเภท</Label>
-                  <select
-                    id="type"
-                    value={newAccount.type}
-                    onChange={(e) => setNewAccount({ ...newAccount, type: e.target.value })}
-                    className="w-full p-2 border rounded-md"
-                  >
-                    <option value="account">Account Code</option>
-                    <option value="header">Header</option>
-                  </select>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                  ยกเลิก
-                </Button>
-                <Button onClick={handleAddAccount}>
-                  เพิ่ม
-                </Button>
-              </DialogFooter>
-            </DialogContent>
           </Dialog>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-blue-500" />
+      {/* Add Dialog */}
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>เพิ่มรหัสบัญชีใหม่</DialogTitle>
+              <DialogDescription>
+                สร้างรหัสบัญชีใหม่สำหรับระบบบัญชี
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
               <div>
-                <p className="text-sm text-muted-foreground">Account Codes</p>
-                <p className="text-2xl font-bold">{accountCount}</p>
+                <Label htmlFor="code">รหัสบัญชี</Label>
+                <Input
+                  id="code"
+                  value={formData.code}
+                  onChange={(e) => setFormData(prev => ({ ...prev, code: e.target.value }))}
+                  placeholder="เช่น 1001, 2001"
+                />
+              </div>
+              <div>
+                <Label htmlFor="name">ชื่อบัญชี</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="เช่น เงินสด, เงินฝากธนาคาร"
+                />
+              </div>
+              <div>
+                <Label htmlFor="description">คำอธิบาย</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="คำอธิบายเพิ่มเติม"
+                  rows={3}
+                />
+              </div>
+              <div>
+                <Label htmlFor="category">หมวดหมู่</Label>
+                <Select value={formData.category} onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="เลือกหมวดหมู่" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="revenue">รายได้</SelectItem>
+                    <SelectItem value="expense">ค่าใช้จ่าย</SelectItem>
+                    <SelectItem value="asset">สินทรัพย์</SelectItem>
+                    <SelectItem value="liability">หนี้สิน</SelectItem>
+                    <SelectItem value="equity">ส่วนของเจ้าของ</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-green-500" />
-              <div>
-                <p className="text-sm text-muted-foreground">Headers</p>
-                <p className="text-2xl font-bold">{headerCount}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-purple-500" />
-              <div>
-                <p className="text-sm text-muted-foreground">รวมทั้งหมด</p>
-                <p className="text-2xl font-bold">{accountCodes.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                ยกเลิก
+              </Button>
+              <Button onClick={handleAddAccountCode}>
+                เพิ่มรหัสบัญชี
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-      {/* Import Instructions */}
-      <Alert>
-        <FileSpreadsheet className="h-4 w-4" />
-        <AlertDescription>
-          <strong>คำแนะนำการนำเข้า Excel:</strong>
-          <ul className="mt-2 space-y-1 text-sm">
-            <li>• คอลัมน์ A: รหัสบัญชี (ไม่บังคับ)</li>
-            <li>• คอลัมน์ B: ชื่อบัญชี (จำเป็น)</li>
-            <li>• คอลัมน์ C: ประเภท (account/header)</li>
-            <li>• แถวแรกจะเป็น header และจะถูกข้าม</li>
-            <li>• ดาวน์โหลด template เพื่อดูรูปแบบที่ถูกต้อง</li>
-          </ul>
-        </AlertDescription>
-      </Alert>
-
-      {/* Search and Filter */}
+      {/* Filters */}
       <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col md:flex-row gap-4">
+        <CardContent className="p-6">
+          <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
               <Label htmlFor="search">ค้นหา</Label>
               <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <Input
                   id="search"
-                  placeholder="ค้นหาตามชื่อหรือรหัส..."
+                  placeholder="ค้นหาตามรหัส, ชื่อ หรือคำอธิบาย"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
                 />
               </div>
             </div>
-            <div className="md:w-48">
-              <Label htmlFor="filter">กรองตามประเภท</Label>
-              <select
-                id="filter"
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                className="w-full p-2 border rounded-md"
-              >
-                <option value="all">ทั้งหมด</option>
-                <option value="account">Account Code</option>
-                <option value="header">Header</option>
-              </select>
+            <div className="sm:w-48">
+              <Label htmlFor="category-filter">หมวดหมู่</Label>
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="เลือกหมวดหมู่" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">ทั้งหมด</SelectItem>
+                  <SelectItem value="revenue">รายได้</SelectItem>
+                  <SelectItem value="expense">ค่าใช้จ่าย</SelectItem>
+                  <SelectItem value="asset">สินทรัพย์</SelectItem>
+                  <SelectItem value="liability">หนี้สิน</SelectItem>
+                  <SelectItem value="equity">ส่วนของเจ้าของ</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="sm:w-48">
+              <Label htmlFor="status-filter">สถานะ</Label>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="เลือกสถานะ" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">ทั้งหมด</SelectItem>
+                  <SelectItem value="active">ใช้งาน</SelectItem>
+                  <SelectItem value="inactive">ไม่ใช้งาน</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Account Codes List */}
+      {/* Account Codes Table */}
       <Card>
         <CardHeader>
-          <CardTitle>รายการ Account Codes</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Hash className="h-5 w-5" />
+            รายการรหัสบัญชี ({filteredAccountCodes.length})
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          {filteredAccounts.length === 0 ? (
+          {isLoading ? (
             <div className="text-center py-8">
-              <AlertTriangle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">ไม่พบข้อมูล Account Codes</p>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="text-gray-500 mt-2">กำลังโหลดข้อมูล...</p>
+            </div>
+          ) : filteredAccountCodes.length === 0 ? (
+            <div className="text-center py-8">
+              <Hash className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-500">ไม่พบข้อมูลรหัสบัญชี</p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {filteredAccounts.map((account) => (
-                <div
-                  key={account.id}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50"
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      {account.code && (
-                        <Badge variant="outline">{account.code}</Badge>
-                      )}
-                      <span className="font-medium">{account.name}</span>
-                      {account.type === 'header' && (
-                        <Badge variant="secondary">Header</Badge>
-                      )}
+            <div className="space-y-4">
+              {filteredAccountCodes.map((accountCode) => (
+                <div key={accountCode.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                      <Hash className="h-5 w-5 text-blue-600" />
                     </div>
-                    {account.created_at && (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        สร้างเมื่อ: {new Date(account.created_at.seconds * 1000).toLocaleDateString('th-TH')}
-                      </p>
-                    )}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-medium text-gray-900">{accountCode.name}</h3>
+                        <Badge className={getCategoryBadgeColor(accountCode.category)}>
+                          {accountCode.category === 'revenue' ? 'รายได้' :
+                           accountCode.category === 'expense' ? 'ค่าใช้จ่าย' :
+                           accountCode.category === 'asset' ? 'สินทรัพย์' :
+                           accountCode.category === 'liability' ? 'หนี้สิน' :
+                           accountCode.category === 'equity' ? 'ส่วนของเจ้าของ' : accountCode.category}
+                        </Badge>
+                        <Badge className={getStatusBadgeColor(accountCode.isActive)}>
+                          {accountCode.isActive ? 'ใช้งาน' : 'ไม่ใช้งาน'}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-4 text-sm text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <Tag className="h-4 w-4" />
+                          รหัส: {accountCode.code}
+                        </span>
+                        {accountCode.description && (
+                          <span className="flex items-center gap-1">
+                            <FileText className="h-4 w-4" />
+                            {accountCode.description}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-gray-400 mt-1">
+                        <span>สร้าง: {new Date(accountCode.createdAt).toLocaleDateString('th-TH')}</span>
+                        {accountCode.updatedAt && (
+                          <span>อัปเดต: {new Date(accountCode.updatedAt).toLocaleDateString('th-TH')}</span>
+                        )}
+                        <span>โดย: {accountCode.createdBy}</span>
+                      </div>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <Switch
+                      checked={accountCode.isActive}
+                      onCheckedChange={() => handleToggleStatus(accountCode.id)}
+                    />
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        setEditingAccount(account);
-                        setIsEditDialogOpen(true);
-                      }}
+                      onClick={() => navigator.clipboard.writeText(accountCode.code)}
+                      className="text-blue-600 hover:text-blue-700"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openEditDialog(accountCode)}
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDeleteAccount(account.id)}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>ยืนยันการลบ</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            คุณแน่ใจหรือไม่ที่จะลบรหัสบัญชี {accountCode.name} ({accountCode.code})? การดำเนินการนี้ไม่สามารถย้อนกลับได้
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDeleteAccountCode(accountCode.id)}
+                            className="bg-red-600 hover:bg-red-700"
+                          >
+                            ลบ
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
               ))}
@@ -581,51 +577,113 @@ export function AccountManagement() {
 
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>แก้ไข Account Code</DialogTitle>
+            <DialogTitle>แก้ไขข้อมูลรหัสบัญชี</DialogTitle>
+            <DialogDescription>
+              แก้ไขข้อมูลรหัสบัญชี {selectedAccountCode?.name}
+            </DialogDescription>
           </DialogHeader>
-          {editingAccount && (
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="edit-code">รหัส</Label>
-                <Input
-                  id="edit-code"
-                  value={editingAccount.code || ''}
-                  onChange={(e) => setEditingAccount({ ...editingAccount, code: e.target.value })}
-                  placeholder="เช่น 53010200"
-                />
-              </div>
-              <div>
-                <Label htmlFor="edit-name">ชื่อ *</Label>
-                <Input
-                  id="edit-name"
-                  value={editingAccount.name}
-                  onChange={(e) => setEditingAccount({ ...editingAccount, name: e.target.value })}
-                  placeholder="เช่น ค่าไฟฟ้า"
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="edit-type">ประเภท</Label>
-                <select
-                  id="edit-type"
-                  value={editingAccount.type || 'account'}
-                  onChange={(e) => setEditingAccount({ ...editingAccount, type: e.target.value })}
-                  className="w-full p-2 border rounded-md"
-                >
-                  <option value="account">Account Code</option>
-                  <option value="header">Header</option>
-                </select>
-              </div>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="edit-code">รหัสบัญชี</Label>
+              <Input
+                id="edit-code"
+                value={formData.code}
+                onChange={(e) => setFormData(prev => ({ ...prev, code: e.target.value }))}
+                placeholder="เช่น 1001, 2001"
+              />
             </div>
-          )}
+            <div>
+              <Label htmlFor="edit-name">ชื่อบัญชี</Label>
+              <Input
+                id="edit-name"
+                value={formData.name}
+                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="เช่น เงินสด, เงินฝากธนาคาร"
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-description">คำอธิบาย</Label>
+              <Textarea
+                id="edit-description"
+                value={formData.description}
+                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="คำอธิบายเพิ่มเติม"
+                rows={3}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-category">หมวดหมู่</Label>
+              <Select value={formData.category} onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="เลือกหมวดหมู่" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="revenue">รายได้</SelectItem>
+                  <SelectItem value="expense">ค่าใช้จ่าย</SelectItem>
+                  <SelectItem value="asset">สินทรัพย์</SelectItem>
+                  <SelectItem value="liability">หนี้สิน</SelectItem>
+                  <SelectItem value="equity">ส่วนของเจ้าของ</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="edit-status">สถานะ</Label>
+              <Select value={formData.isActive ? 'active' : 'inactive'} onValueChange={(value) => setFormData(prev => ({ ...prev, isActive: value === 'active' }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="เลือกสถานะ" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">ใช้งาน</SelectItem>
+                  <SelectItem value="inactive">ไม่ใช้งาน</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
               ยกเลิก
             </Button>
-            <Button onClick={handleEditAccount}>
-              บันทึก
+            <Button onClick={handleEditAccountCode}>
+              บันทึกการเปลี่ยนแปลง
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Import Dialog */}
+      <Dialog open={isBulkImportDialogOpen} onOpenChange={setIsBulkImportDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>นำเข้าข้อมูลรหัสบัญชี</DialogTitle>
+            <DialogDescription>
+              นำเข้าข้อมูลรหัสบัญชีจากไฟล์ CSV (รูปแบบ: รหัส,ชื่อ,คำอธิบาย,หมวดหมู่)
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="bulkImport">ข้อมูล CSV</Label>
+              <Textarea
+                id="bulkImport"
+                value={bulkImportData}
+                onChange={(e) => setBulkImportData(e.target.value)}
+                placeholder="1001,เงินสด,เงินสดในมือ,asset&#10;1002,เงินฝากธนาคาร,เงินฝากธนาคาร,asset&#10;2001,ค่าใช้จ่ายสำนักงาน,ค่าใช้จ่ายสำนักงาน,expense"
+                rows={10}
+                className="font-mono text-sm"
+              />
+            </div>
+            <div className="text-sm text-gray-500">
+              <p>รูปแบบข้อมูล: รหัส,ชื่อ,คำอธิบาย,หมวดหมู่</p>
+              <p>หมวดหมู่ที่รองรับ: revenue, expense, asset, liability, equity</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsBulkImportDialogOpen(false)}>
+              ยกเลิก
+            </Button>
+            <Button onClick={handleBulkImport}>
+              นำเข้าข้อมูล
             </Button>
           </DialogFooter>
         </DialogContent>

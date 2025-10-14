@@ -32,7 +32,7 @@ export default function Categories() {
   
   // Pagination and view state
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(12);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [sortField, setSortField] = useState('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -60,9 +60,10 @@ export default function Categories() {
 
   // Filter categories based on search and type filter
   const filteredCategories = categories.filter(category => {
-    if (!category || !category.id || !category.name) return false; // Skip invalid categories
+    if (!category || !category.id) return false; // Skip invalid categories
     
-    const matchesSearch = category.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = !searchTerm || 
+      (category.name && category.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (category.description && category.description.toLowerCase().includes(searchTerm.toLowerCase()));
     
     const matchesType = typeFilter === 'all' || 
@@ -93,7 +94,7 @@ export default function Categories() {
   const totalPages = Math.ceil(sortedCategories.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedCategories = sortedCategories.slice(startIndex, endIndex).filter(category => category && category.id);
+  const paginatedCategories = sortedCategories.slice(startIndex, endIndex);
 
   // Bulk actions handlers
   const handleSelectCategory = (categoryId: string) => {
@@ -123,9 +124,9 @@ export default function Categories() {
 
   const handleBulkDelete = async () => {
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
+      const { FirestoreService } = await import('@/lib/firestoreService');
       for (const categoryId of selectedCategories) {
-        await firestoreService.deleteCategory(categoryId);
+        await FirestoreService.deleteCategory(categoryId);
       }
 
       toast({
@@ -146,9 +147,9 @@ export default function Categories() {
 
   const fetchCategories = async () => {
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
-      const categoriesData = await firestoreService.getCategories();
-      const productsData = await firestoreService.getProducts();
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      const categoriesData = await FirestoreService.getCategories();
+      const productsData = await FirestoreService.getProducts();
 
       const counts: Record<string, number> = {};
       productsData.forEach(product => {
@@ -187,8 +188,8 @@ export default function Categories() {
         return;
       }
 
-      const { firestoreService } = await import('@/lib/firestoreService');
-      await firestoreService.deleteCategory(categoryId);
+      const { FirestoreService } = await import('@/lib/firestoreService');
+        await FirestoreService.deleteCategory(categoryId);
 
       toast({
         title: "สำเร็จ",
@@ -249,9 +250,9 @@ export default function Categories() {
       key: 'name',
       title: 'ชื่อหมวดหมู่',
       sortable: true,
-      render: (category: Category) => (
+      render: (cellValue: any, category: Category) => (
         <div className="flex items-center gap-2">
-          <span className="font-medium">{category?.name || 'Unknown'}</span>
+          <span className="font-medium">{category.name || 'ไม่มีชื่อ'}</span>
           {category?.is_medicine && (
             <Pill className="h-4 w-4 text-green-600" title="หมวดหมู่ยา" />
           )}
@@ -262,7 +263,7 @@ export default function Categories() {
       key: 'description',
       title: 'คำอธิบาย',
       sortable: true,
-      render: (category: Category) => (
+      render: (cellValue: any, category: Category) => (
         <span className="text-sm text-muted-foreground">
           {category?.description || 'ไม่มีคำอธิบาย'}
         </span>
@@ -272,7 +273,7 @@ export default function Categories() {
       key: 'product_count',
       title: 'จำนวนสินค้า',
       sortable: true,
-      render: (category: Category) => {
+      render: (cellValue: any, category: Category) => {
         if (!category?.id) return <span className="text-sm text-muted-foreground">-</span>;
         const count = productCounts[category.id] || 0;
         return (
@@ -286,7 +287,7 @@ export default function Categories() {
       key: 'is_medicine',
       title: 'ประเภท',
       sortable: true,
-      render: (category: Category) => (
+      render: (cellValue: any, category: Category) => (
         category?.is_medicine ? (
           <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-200">
             ยา
@@ -302,7 +303,7 @@ export default function Categories() {
       key: 'actions',
       title: 'การดำเนินการ',
       sortable: false,
-      render: (category: Category) => (
+      render: (cellValue: any, category: Category) => (
         <div className="flex items-center gap-1">
           {category?.id ? (
             <>
@@ -369,6 +370,7 @@ export default function Categories() {
         searchValue={searchTerm}
         onSearchChange={setSearchTerm}
         searchPlaceholder="ค้นหาหมวดหมู่ ชื่อหรือคำอธิบาย..."
+        scannerDetected={scannerDetected}
         primaryAction={
           <AddCategoryDialog onCategoryAdded={fetchCategories} />
         }
@@ -405,7 +407,7 @@ export default function Categories() {
         description="จัดการหมวดหมู่สินค้าทั้งหมดในระบบ"
         data={paginatedCategories || []}
         columns={columns}
-        currentViewMode={viewMode || 'grid'}
+        currentViewMode={viewMode || 'table'}
         onViewModeChange={setViewMode}
         onSort={handleSort}
         onRefresh={fetchCategories}
@@ -421,7 +423,7 @@ export default function Categories() {
         loading={isLoading || false}
         emptyMessage="ไม่พบข้อมูลหมวดหมู่ที่ตรงกับการค้นหา"
         getItemId={(item) => item?.id || 'unknown'}
-        getItemName={(item) => item?.name || 'Unknown'}
+        getItemName={(item) => item.name || 'ไม่มีชื่อ'}
         currentPage={currentPage || 1}
         totalPages={totalPages || 1}
         filterDialog={
@@ -483,7 +485,7 @@ export default function Categories() {
         itemsPerPage={itemsPerPage}
         onPageChange={setCurrentPage}
         onItemsPerPageChange={setItemsPerPage}
-        itemsPerPageOptions={[6, 12, 24, 48]}
+        itemsPerPageOptions={[5, 10, 20, 50]}
       />
 
       {/* Delete Confirmation Dialog */}

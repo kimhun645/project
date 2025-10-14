@@ -8,7 +8,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Plus, Eye, Trash2, MoreHorizontal, Printer, Calendar, User, CreditCard, FileText, Clock, CheckCircle, Search, Filter, X, RefreshCw, TrendingUp, AlertTriangle, FileEdit } from 'lucide-react';
+import { Plus, Eye, Trash2, MoreHorizontal, Printer, Calendar, User, CreditCard, FileText, Clock, CheckCircle, XCircle, Search, Filter, X, RefreshCw, TrendingUp, AlertTriangle, FileEdit } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { type BudgetRequest as DBBudgetRequest, type Approval } from '@/lib/firestoreService';
 import { useBarcodeScanner } from '@/hooks/use-barcode-scanner';
@@ -97,8 +97,8 @@ export default function BudgetRequest() {
   const handleBulkDelete = async () => {
     try {
       for (const requestId of selectedRequests) {
-        const { firestoreService } = await import('@/lib/firestoreService');
-        await firestoreService.deleteBudgetRequest(requestId);
+        const { FirestoreService } = await import('@/lib/firestoreService');
+        await FirestoreService.deleteBudgetRequest(requestId);
       }
       
       toast({
@@ -170,8 +170,8 @@ export default function BudgetRequest() {
           // 3. หากไม่มีใน budgetRequest ให้ลองดึงจาก approval collection
           else {
             console.log('🔍 ไม่พบข้อมูลใน budgetRequest กำลังดึงจาก approval collection...');
-            const { firestoreService } = await import('@/lib/firestoreService');
-            const approval = await firestoreService.getApprovalByRequestId(String(selectedRequest.id));
+            const { FirestoreService } = await import('@/lib/firestoreService');
+            const approval = await FirestoreService.getApprovalByRequestId(String(selectedRequest.id));
             if (approval) {
               approverName = approval.approver_name || 'ไม่ระบุ';
               approvalDate = approval.created_at || new Date().toISOString();
@@ -226,8 +226,8 @@ export default function BudgetRequest() {
   const fetchRequests = async () => {
     setLoading(true);
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
-      const data = await firestoreService.getBudgetRequests();
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      const data = await FirestoreService.getBudgetRequests();
       console.log('🔍 ข้อมูลที่ได้รับจาก Firestore:', data);
       console.log('📊 จำนวนรายการ:', data?.length || 0);
       
@@ -256,8 +256,8 @@ export default function BudgetRequest() {
   const handleDelete = async () => {
     if (!requestToDelete) return;
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
-      await firestoreService.deleteBudgetRequest(String(requestToDelete.id));
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      await FirestoreService.deleteBudgetRequest(String(requestToDelete.id));
       toast({ title: 'ลบสำเร็จ', description: `ลบคำขอ ${requestToDelete.request_no} เรียบร้อยแล้ว` });
       setDeleteDialogOpen(false);
       setRequestToDelete(null);
@@ -273,8 +273,8 @@ export default function BudgetRequest() {
   const handleEdit = async (editedRequest: DBBudgetRequest) => {
     if (!selectedRequest) return;
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
-      await firestoreService.updateBudgetRequest(String(selectedRequest.id), editedRequest);
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      await FirestoreService.updateBudgetRequest(String(selectedRequest.id), editedRequest);
       toast({ title: 'แก้ไขสำเร็จ', description: `แก้ไขคำขอ ${selectedRequest.request_no} เรียบร้อยแล้ว` });
       setEditDialogOpen(false);
       setSelectedRequest(null);
@@ -287,39 +287,95 @@ export default function BudgetRequest() {
   };
 
   const handlePrint = async (request: DBBudgetRequest) => {
-    let approvalInfo: ApprovalInfo | null = null;
-    if (request.status !== 'PENDING') {
-      try {
-        const { firestoreService } = await import('@/lib/firestoreService');
-        const data = await firestoreService.getApprovalByRequestId(String(request.id));
-        if (data) {
-          approvalInfo = {
-            approver_name: data.approver_name || 'ไม่ระบุ',
-            created_at: data.created_at || new Date().toISOString(),
-            remark: data.remark
-          };
-        }
-      } catch (err) {
-        console.error('Error fetching approval data for print:', err);
-      }
-    }
-
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    const itemsTable = request.material_list?.length && Array.isArray(request.material_list)
-      ? `<table style="width:100%;border-collapse:collapse;margin:15px 0;font-size:12px;"><thead><tr style="background-color:#f5f5f5;"><th style="border:1px solid #ccc;padding:8px;text-align:left;">รายการ</th><th style="border:1px solid #ccc;padding:8px;text-align:left;">จำนวน</th><th style="border:1px solid #ccc;padding:8px;text-align:left;">หน่วย</th></tr></thead><tbody>${request.material_list
-          .map(
-            (item, idx) => `<tr><td style="border:1px solid #ccc;padding:8px;">${item.name || item.item || '-'}</td><td style="border:1px solid #ccc;padding:8px;">${item.quantity || '-'}</td><td style="border:1px solid #ccc;padding:8px;">${item.unit || '-'}</td></tr>`
-          )
-          .join('')}</tbody></table>`
-      : `<p style="text-align:center;color:#666;font-size:12px;margin:15px 0;">ไม่มีรายการวัสดุ</p>`;
+    // Create items table
+    const itemsTable = request.material_list && request.material_list.length > 0 ? `
+    <table class="memo-table">
+      <thead>
+        <tr>
+          <th>รายการ</th>
+          <th>จำนวน</th>
+          <th>หน่วย</th>
+          <th>ราคาต่อหน่วย</th>
+          <th>รวม</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${request.material_list.map((item: any) => `
+          <tr>
+            <td>${item.name || item.item || ''}</td>
+            <td style="text-align: center;">${item.quantity || 0}</td>
+            <td style="text-align: center;">${item.unit || ''}</td>
+            <td style="text-align: right;">฿${parseFloat((Number(item.unit_price) || 0).toFixed(2)).toLocaleString('th-TH')}</td>
+            <td style="text-align: right;">฿${parseFloat((Number(item.total_price) || 0).toFixed(2)).toLocaleString('th-TH')}</td>
+          </tr>
+        `).join('')}
+        <tr style="background-color: #f1f1f1; font-weight: bold;">
+          <td colspan="4" style="text-align: right;">รวมทั้งสิ้น</td>
+          <td style="text-align: right;">฿${parseFloat((Number(request.amount) || 0).toFixed(2)).toLocaleString('th-TH')}</td>
+        </tr>
+      </tbody>
+    </table>
+    ` : '';
 
-    const printContent = `<!DOCTYPE html>
+    // Convert number to Thai text
+    const convertToThaiText = (num: number): string => {
+      const thaiNumbers = ['ศูนย์', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า'];
+      const thaiUnits = ['', 'สิบ', 'ร้อย', 'พัน', 'หมื่น', 'แสน', 'ล้าน'];
+      
+      if (num === 0) return 'ศูนย์บาท';
+      if (num < 0) return 'ลบ' + convertToThaiText(-num);
+      
+      const integerPart = Math.floor(num);
+      const decimalPart = Math.round((num - integerPart) * 100);
+      
+      let result = '';
+      if (integerPart > 0) {
+        result += convertIntegerToThai(integerPart) + 'บาท';
+      }
+      if (decimalPart > 0) {
+        result += convertIntegerToThai(decimalPart) + 'สตางค์';
+      }
+      
+      return result || 'ศูนย์บาท';
+    };
+
+    const convertIntegerToThai = (num: number): string => {
+      if (num === 0) return '';
+      if (num < 10) return ['', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า'][num];
+      if (num < 100) {
+        const tens = Math.floor(num / 10);
+        const ones = num % 10;
+        if (tens === 1) return 'สิบ' + (ones === 1 ? '' : convertIntegerToThai(ones));
+        return convertIntegerToThai(tens) + 'สิบ' + (ones === 1 ? '' : convertIntegerToThai(ones));
+      }
+      if (num < 1000) {
+        const hundreds = Math.floor(num / 100);
+        const remainder = num % 100;
+        return convertIntegerToThai(hundreds) + 'ร้อย' + convertIntegerToThai(remainder);
+      }
+      if (num < 1000000) {
+        const thousands = Math.floor(num / 1000);
+        const remainder = num % 1000;
+        return convertIntegerToThai(thousands) + 'พัน' + convertIntegerToThai(remainder);
+      }
+      if (num < 1000000000) {
+        const millions = Math.floor(num / 1000000);
+        const remainder = num % 1000000;
+        return convertIntegerToThai(millions) + 'ล้าน' + convertIntegerToThai(remainder);
+      }
+      return num.toString();
+    };
+
+    const printContent = `
+<!DOCTYPE html>
 <html lang="th">
 <head>
   <meta charset="UTF-8">
   <title>คำขออนุมัติใช้งบประมาณ ${request.request_no}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     @page { 
       size: A4 portrait; 
@@ -327,158 +383,167 @@ export default function BudgetRequest() {
     }
     body { 
       font-family: 'Sarabun', 'Tahoma', sans-serif; 
-      font-size: 12px; 
-      line-height: 1.4; 
+      font-size: 14px; 
+      line-height: 1.8; 
       margin: 0; 
-      padding: 0;
+      padding: 20px;
       color: #333;
     }
-    .header { 
-      text-align: center; 
-      margin-bottom: 20px; 
-      border-bottom: 2px solid #333;
-      padding-bottom: 15px;
-    }
-    .header h1 { 
-      font-size: 18px; 
-      margin: 0 0 5px 0; 
-      font-weight: bold;
-    }
-    .header p { 
-      font-size: 14px; 
-      margin: 0; 
-      color: #666;
-    }
-    .info-section { 
-      margin: 15px 0; 
-    }
-    .info-row { 
+    .print-header { 
       display: flex; 
-      margin-bottom: 8px; 
-      font-size: 12px;
+      justify-content: space-between; 
+      margin-bottom: 20px; 
+      padding-bottom: 15px; 
+      border-bottom: 2px solid #2c3e50; 
     }
-    .info-label { 
+    .print-logo { 
+      width: 30%; 
+      text-align: left; 
+    }
+    .print-title { 
+      width: 40%; 
+      text-align: center; 
       font-weight: bold; 
-      width: 120px; 
-      flex-shrink: 0;
+      font-size: 20px; 
     }
-    .info-value { 
-      flex: 1;
+    .print-code { 
+      width: 30%; 
+      text-align: right; 
     }
-    .amount-highlight { 
-      font-size: 16px; 
-      font-weight: bold; 
-      color: #2563eb;
+    .memo-title { 
+      text-align: center; 
+      font-weight: 700; 
+      font-size: 24px; 
+      margin-bottom: 25px; 
+      color: #2c3e50; 
+    }
+    .memo-header { 
+      display: flex; 
+      justify-content: space-between; 
+      margin-bottom: 20px; 
+    }
+    .memo-to { 
+      margin-bottom: 20px; 
+    }
+    .memo-content { 
+      margin-bottom: 25px; 
+      text-indent: 2rem; 
+      text-align: justify; 
+    }
+    .memo-signature { 
+      display: flex; 
+      justify-content: flex-end; 
+      flex-direction: column; 
+      align-items: flex-end; 
+      margin-top: 50px; 
+    }
+    .memo-table { 
+      width: 100%; 
+      margin: 20px 0; 
+      border-collapse: collapse; 
+    }
+    .memo-table th { 
+      background-color: #f1f1f1; 
+      padding: 10px; 
+      border: 1px solid #ddd; 
+      text-align: center; 
+    }
+    .memo-table td { 
+      padding: 10px; 
+      border: 1px solid #ddd; 
     }
     .approval-section { 
-      margin: 20px 0; 
-      padding: 15px; 
-      border: 1px solid #007bff; 
-      background-color: #f8f9ff;
-      border-radius: 5px;
+      margin-top: 40px; 
+      padding-top: 20px; 
+      border-top: 1px dashed #ccc; 
     }
-    .approval-section h3 { 
-      margin: 0 0 10px 0; 
-      font-size: 14px; 
-      color: #007bff;
-    }
-    .material-section { 
-      margin: 20px 0; 
-    }
-    .material-section h3 { 
-      margin: 0 0 10px 0; 
-      font-size: 14px; 
-      border-bottom: 1px solid #ddd;
-      padding-bottom: 5px;
-    }
-    .note-section { 
-      margin: 15px 0; 
-      padding: 10px; 
-      background-color: #f9f9f9; 
-      border-left: 4px solid #666;
-      font-size: 11px;
-    }
-    .footer { 
-      margin-top: 30px; 
+    .center-text { 
       text-align: center; 
-      color: #666; 
-      font-size: 10px;
-      border-top: 1px solid #ddd;
-      padding-top: 10px;
     }
     @media print {
-      body { margin: 0; }
-      .no-print { display: none; }
+      body { 
+        padding: 0; 
+        margin: 0; 
+      }
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1>คำขออนุมัติใช้งบประมาณ</h1>
-    <p>เลขที่คำขอ: ${request.request_no}</p>
-  </div>
-  
-  <div class="info-section">
-    <div class="info-row">
-      <div class="info-label">ผู้ขอ:</div>
-      <div class="info-value">${request.requester}</div>
+  <div class="print-header">
+    <div class="print-logo">
+      <strong>ศูนย์จัดการธนบัตร นครราชสีมา</strong><br>
+      สำนักงานธนาคารแห่งประเทศไทย
     </div>
-    <div class="info-row">
-      <div class="info-label">วันที่ขอ:</div>
-      <div class="info-value">${new Date(request.request_date).toLocaleDateString('th-TH')}</div>
-    </div>
-    <div class="info-row">
-      <div class="info-label">รหัสบัญชี:</div>
-      <div class="info-value">${request.account_code} ${request.account_name ? '- ' + request.account_name : ''}</div>
-    </div>
-    <div class="info-row">
-      <div class="info-label">จำนวนเงิน:</div>
-      <div class="info-value amount-highlight">฿${parseFloat((Number(request.amount) || 0).toFixed(2)).toLocaleString('th-TH')}</div>
-    </div>
-    <div class="info-row">
-      <div class="info-label">สถานะ:</div>
-      <div class="info-value">${request.status === 'PENDING' ? 'รอการอนุมัติ' : request.status === 'APPROVED' ? 'อนุมัติแล้ว' : request.status === 'REJECTED' ? 'ไม่อนุมัติ' : request.status || 'ไม่ระบุ'}</div>
+    <div class="print-title"></div>
+    <div class="print-code">
+      <strong>รหัสคำขอ:</strong> ${request.request_no}<br>
+      <strong>วันที่:</strong> ${new Date(request.request_date).toLocaleDateString('th-TH')}<br>
+      <strong>สถานะ:</strong> ${request.status === 'PENDING' ? 'รอการอนุมัติ' : 
+                               request.status === 'APPROVED' ? 'อนุมัติแล้ว' : 
+                               request.status === 'REJECTED' ? 'ปฏิเสธ' : 'ไม่ระบุ'}
     </div>
   </div>
+
+  <div class="memo-title">บันทึกขออนุมัติใช้งบประมาณ</div>
   
-  ${request.note ? `
-  <div class="note-section">
-    <strong>หมายเหตุ:</strong> ${request.note}
+  <div class="memo-header">
+    <div>
+      <strong>ส่วนงาน</strong> ศูนย์จัดการธนบัตร นครราชสีมา
+    </div>
+    <div style="text-align: right;">
+      <strong>วันที่</strong> ${new Date(request.request_date).toLocaleDateString('th-TH', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      })}
+    </div>
   </div>
-  ` : ''}
   
-  <div class="material-section">
-    <h3>รายการวัสดุ</h3>
+  <div class="memo-to">
+    <strong>เรื่อง</strong> ขออนุมัติใช้งบประมาณจัดซื้อ (${request.account_name || ''})<br>
+    <strong>เรียน</strong> ผู้จัดการศูนย์ ศูนย์จัดการธนบัตร นครราชสีมา
+  </div>
+  
+  <div class="memo-content">
+    <p>
+      งานธุรการ ขอใช้งบประมาณจำนวน <strong>${parseFloat(request.amount.toString()).toLocaleString('th-TH')} บาท</strong> 
+      (<u>${convertToThaiText(parseFloat(request.amount.toString()))}</u>) 
+      จากรหัสบัญชี <strong>${request.account_code}</strong>${request.account_name ? ` (${request.account_name})` : ''}
+      ตามรายการดังต่อไปนี้
+    </p>
+    
     ${itemsTable}
-    ${request.material_list && request.material_list.length > 0 ? `
-    <div style="margin-top: 15px; padding: 10px; background-color: #f9f9f9; border-radius: 4px;">
-      <strong>สรุปรายการวัสดุ:</strong> ${request.material_list.length} รายการ
-    </div>
-    ` : ''}
+    
+    <p>
+      จึงเรียนมาเพื่อโปรดพิจารณาอนุมัติ
+    </p>
   </div>
   
-  ${approvalInfo ? `
   <div class="approval-section">
-    <h3>ข้อมูลการอนุมัติ</h3>
-    <div class="info-row">
-      <div class="info-label">ผู้อนุมัติ:</div>
-      <div class="info-value">${approvalInfo.approver_name}</div>
+    <div class="memo-signature">
+      <div style="margin-bottom: 60px; text-align: center;">
+        (ลงชื่อ) ................................................<br>
+        (${request.requester})<br>
+        ตำแหน่ง เจ้าหน้าที่งานบริหารธนบัตรอาวุโส (ควบ)
+      </div>
+      <div class="center-text">
+        ${request.status === 'APPROVED' || request.status === 'REJECTED' 
+          ? `วันที่อนุมัติ: ${request.approved_at ? new Date(request.approved_at).toLocaleDateString('th-TH', {
+              year: 'numeric',
+              month: '2-digit', 
+              day: '2-digit',
+              calendar: 'gregory'
+            }) : 'ไม่ระบุ'}`
+          : 'วันที่อนุมัติ...../...../.......'
+        }
+      </div>
+      ${request.status === 'APPROVED' || request.status === 'REJECTED' 
+        ? `<div class="center-text" style="margin-top: 10px;">
+             ผู้อนุมัติ: ${request.approver_name || 'ไม่ระบุ'}
+           </div>`
+        : ''
+      }
     </div>
-    <div class="info-row">
-      <div class="info-label">วันที่อนุมัติ:</div>
-      <div class="info-value">${new Date(approvalInfo.created_at).toLocaleString('th-TH')}</div>
-    </div>
-    ${approvalInfo.remark ? `
-    <div class="info-row">
-      <div class="info-label">หมายเหตุ:</div>
-      <div class="info-value">${approvalInfo.remark}</div>
-    </div>
-    ` : ''}
-  </div>
-  ` : ''}
-  
-  <div class="footer">
-    <p>พิมพ์เมื่อ: ${new Date().toLocaleString('th-TH')}</p>
   </div>
 </body>
 </html>`;
@@ -490,16 +555,36 @@ export default function BudgetRequest() {
   };
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'PENDING':
-        return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">รอการอนุมัติ</Badge>;
-      case 'APPROVED':
-        return <Badge variant="default" className="bg-green-50 text-green-700 border-green-200">อนุมัติแล้ว</Badge>;
-      case 'REJECTED':
-        return <Badge variant="destructive">ไม่อนุมัติ</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
-    }
+    return (
+      <Badge 
+        variant={status === 'PENDING' ? 'secondary' : 
+               status === 'APPROVED' ? 'default' : 'destructive'}
+        className={`px-3 py-1 text-sm font-bold ${
+          status === 'PENDING' 
+            ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white border-0' 
+            : status === 'APPROVED' 
+              ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0'
+              : 'bg-gradient-to-r from-red-500 to-rose-500 text-white border-0'
+        }`}
+      >
+        {status === 'PENDING' ? (
+          <>
+            <Clock className="h-3 w-3 mr-1" />
+            รอการอนุมัติ
+          </>
+        ) : status === 'APPROVED' ? (
+          <>
+            <CheckCircle className="h-3 w-3 mr-1" />
+            อนุมัติแล้ว
+          </>
+        ) : (
+          <>
+            <XCircle className="h-3 w-3 mr-1" />
+            ไม่อนุมัติ
+          </>
+        )}
+      </Badge>
+    );
   };
 
   // Filtered requests based on search and filters
@@ -613,11 +698,7 @@ export default function BudgetRequest() {
       key: 'request_no',
       title: 'หมายเลขคำขอ',
       sortable: true,
-      render: (request: DBBudgetRequest) => {
-        console.log('🔍 Render request_no:', request);
-        console.log('🔍 request.request_no:', request?.request_no);
-        console.log('🔍 request.id:', request?.id);
-        console.log('🔍 request.requester:', request?.requester);
+      render: (cellValue: any, request: DBBudgetRequest) => {
         return (
           <div className="flex items-center gap-2">
             <span className="font-medium">{request?.request_no || 'Unknown'}</span>
@@ -632,7 +713,7 @@ export default function BudgetRequest() {
       key: 'requester',
       title: 'ผู้ขอ',
       sortable: true,
-      render: (request: DBBudgetRequest) => (
+      render: (cellValue: any, request: DBBudgetRequest) => (
         <span className="text-sm text-muted-foreground">
           {request?.requester || '-'}
         </span>
@@ -642,7 +723,7 @@ export default function BudgetRequest() {
       key: 'note',
       title: 'รายละเอียด',
       sortable: true,
-      render: (request: DBBudgetRequest) => (
+      render: (cellValue: any, request: DBBudgetRequest) => (
         <span className="text-sm text-muted-foreground">
           {request?.account_name || request?.note || '-'}
         </span>
@@ -652,7 +733,7 @@ export default function BudgetRequest() {
       key: 'amount',
       title: 'จำนวนเงิน',
       sortable: true,
-      render: (request: DBBudgetRequest) => (
+      render: (cellValue: any, request: DBBudgetRequest) => (
         <span className="text-sm font-semibold text-green-600">
           ฿{(Number(request?.amount) || 0).toLocaleString()}
         </span>
@@ -662,28 +743,15 @@ export default function BudgetRequest() {
       key: 'status',
       title: 'สถานะ',
       sortable: true,
-      render: (request: DBBudgetRequest) => {
-        const status = request?.status;
-        return status === 'APPROVED' ? (
-          <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200">
-            อนุมัติแล้ว
-          </Badge>
-        ) : status === 'REJECTED' ? (
-          <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200">
-            ไม่อนุมัติ
-          </Badge>
-        ) : (
-          <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-200">
-            รอการอนุมัติ
-          </Badge>
-        );
+      render: (cellValue: any, request: DBBudgetRequest) => {
+        return getStatusBadge(request?.status || '');
       }
     },
     {
       key: 'created_at',
       title: 'วันที่สร้าง',
       sortable: true,
-      render: (request: DBBudgetRequest) => (
+      render: (cellValue: any, request: DBBudgetRequest) => (
         <span className="text-sm text-muted-foreground">
           {request?.created_at ? new Date(request.created_at).toLocaleDateString('th-TH') : '-'}
         </span>
@@ -693,7 +761,7 @@ export default function BudgetRequest() {
       key: 'actions',
       title: 'การดำเนินการ',
       sortable: false,
-      render: (request: DBBudgetRequest) => (
+      render: (cellValue: any, request: DBBudgetRequest) => (
         <div className="flex items-center gap-1">
           {request?.id ? (
             <>
@@ -709,18 +777,20 @@ export default function BudgetRequest() {
               >
                 <Eye className="h-4 w-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setRequestToDelete(request);
-                  setDeleteDialogOpen(true);
-                }}
-                className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-red-50"
-                title="ลบ"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              {request.status === 'PENDING' && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setRequestToDelete(request);
+                    setDeleteDialogOpen(true);
+                  }}
+                  className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-red-50"
+                  title="ลบ"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
@@ -982,8 +1052,7 @@ export default function BudgetRequest() {
                       <div>
                         <div className="text-sm text-orange-600 font-medium">สถานะ</div>
                         <div className="text-lg font-bold text-orange-800">
-                          {selectedRequest.status === 'PENDING' ? 'รอการอนุมัติ' : 
-                           selectedRequest.status === 'APPROVED' ? 'อนุมัติแล้ว' : 'ปฏิเสธ'}
+                          {getStatusBadge(selectedRequest.status || '')}
                         </div>
                       </div>
                     </div>

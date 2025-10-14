@@ -11,7 +11,9 @@ import {
   orderBy,
   limit,
   Timestamp,
-  serverTimestamp
+  serverTimestamp,
+  writeBatch,
+  getCountFromServer
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -92,10 +94,65 @@ export interface Movement {
   reason: string;
   reference?: string;
   notes?: string;
+  person_name?: string; // ผู้เบิก/ผู้รับ
+  person_role?: string; // บทบาท (เบิก/รับ)
   product_name?: string;
   sku?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface WithdrawalItem {
+  id: string;
+  product_id: string;
+  product_name: string;
+  product_sku: string;
+  quantity: number;
+  unit: string;
+  reason: string;
+}
+
+export interface Withdrawal {
+  id: string;
+  withdrawal_no: string;
+  withdrawal_date: string;
+  requester_name: string;
+  department: string;
+  purpose: string;
+  notes: string;
+  items: WithdrawalItem[];
+  status: 'pending' | 'approved' | 'completed' | 'cancelled';
+  created_at: string;
+  created_by: string;
+}
+
+export interface ReceiptItem {
+  id: string;
+  product_id: string;
+  product_name: string;
+  product_sku: string;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  total_price: number;
+  supplier: string;
+  batch_no?: string;
+  expiry_date?: string;
+}
+
+export interface Receipt {
+  id: string;
+  receipt_no: string;
+  receipt_date: string;
+  receiver_name: string;
+  department: string;
+  supplier: string;
+  invoice_no: string;
+  notes: string;
+  items: ReceiptItem[];
+  status: 'pending' | 'completed' | 'cancelled';
+  created_at: string;
+  created_by: string;
 }
 
 export interface BudgetRequest {
@@ -163,13 +220,63 @@ const toISOString = (timestamp: any): string => {
 };
 
 export class FirestoreService {
-  static async getProducts(): Promise<Product[]> {
-    try {
-      const productsRef = collection(db, 'products');
-      const snapshot = await getDocs(productsRef);
+  // Cache for frequently accessed data
+  private static cache = new Map<string, { data: any; timestamp: number }>();
+  private static CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-      const products = snapshot.docs.map(doc => {
+  private static getCachedData<T>(key: string): T | null {
+    const cached = this.cache.get(key);
+    if (cached && Date.now() - cached.timestamp < this.CACHE_DURATION) {
+      return cached.data;
+    }
+    return null;
+  }
+
+  private static setCachedData<T>(key: string, data: T): void {
+    this.cache.set(key, { data, timestamp: Date.now() });
+  }
+
+  static async getProducts(retryCount = 0): Promise<Product[]> {
+    const maxRetries = 3;
+    const retryDelay = 1000; // 1 second
+    
+    try {
+      // Check cache first
+      const cacheKey = 'products';
+      const cachedProducts = this.getCachedData<Product[]>(cacheKey);
+      if (cachedProducts) {
+        console.log('📦 ใช้ข้อมูลจาก cache');
+        return cachedProducts;
+      }
+
+      console.log('🔍 กำลังโหลดข้อมูลสินค้า...');
+      
+      // Load all data in parallel
+      const [productsSnapshot, categoriesSnapshot, suppliersSnapshot] = await Promise.all([
+        getDocs(collection(db, 'products')),
+        getDocs(collection(db, 'categories')),
+        getDocs(collection(db, 'suppliers'))
+      ]);
+
+      // Build lookup maps
+      const categoriesMap = new Map();
+      categoriesSnapshot.docs.forEach(doc => {
+        categoriesMap.set(doc.id, doc.data().name);
+      });
+
+      const suppliersMap = new Map();
+      suppliersSnapshot.docs.forEach(doc => {
+        suppliersMap.set(doc.id, doc.data().name);
+      });
+
+      const products = productsSnapshot.docs.map(doc => {
         const data = doc.data();
+        const categoryName = categoriesMap.get(data.category_id) || data.category_name;
+        const supplierName = suppliersMap.get(data.supplier_id) || data.supplier_name;
+        
+        console.log(`📦 สินค้า: ${data.name}, หมวดหมู่ ID: ${data.category_id}, หมวดหมู่ชื่อ: ${categoryName}`);
+        console.log(`📦 สินค้า: ${data.name}, ผู้จำหน่าย ID: ${data.supplier_id}, ผู้จำหน่ายชื่อ: ${supplierName}`);
+        
         return {
           id: doc.id,
           name: data.name || '',
@@ -184,17 +291,42 @@ export class FirestoreService {
           unit: data.unit,
           location: data.location,
           barcode: data.barcode,
-          category_name: data.category_name,
-          supplier_name: data.supplier_name,
+          category_name: categoryName,
+          supplier_name: supplierName,
           created_at: toISOString(data.created_at),
           updated_at: toISOString(data.updated_at)
         } as Product;
       });
 
+      // Cache the results
+      this.setCachedData(cacheKey, products);
       return products;
-    } catch (error) {
-      console.error('Error getting products:', error);
-      return [];
+    } catch (error: any) {
+      console.error('❌ Error getting products:', error);
+      console.error('❌ Error code:', error.code);
+      console.error('❌ Error message:', error.message);
+      
+      // Handle network errors with retry
+      if ((error.code === 'unavailable' || error.code === 'deadline-exceeded' || error.message?.includes('network')) && retryCount < maxRetries) {
+        console.log(`🔄 Retrying get products (attempt ${retryCount + 1}/${maxRetries})...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay * (retryCount + 1)));
+        return this.getProducts(retryCount + 1);
+      }
+      
+      // Handle specific Firestore errors
+      if (error.code === 'permission-denied') {
+        console.error('ไม่มีสิทธิ์ในการเข้าถึงข้อมูลสินค้า');
+        return [];
+      } else if (error.code === 'unavailable') {
+        console.error('เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล กรุณาลองใหม่อีกครั้ง');
+        return [];
+      } else if (error.code === 'deadline-exceeded') {
+        console.error('การดำเนินการใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง');
+        return [];
+      } else {
+        console.error(`เกิดข้อผิดพลาดในการโหลดข้อมูลสินค้า: ${error.message}`);
+        return [];
+      }
     }
   }
 
@@ -233,11 +365,53 @@ export class FirestoreService {
     }
   }
 
-  static async createProduct(product: Omit<Product, 'id' | 'created_at' | 'updated_at'>): Promise<Product> {
+  static async getProductByBarcode(barcode: string): Promise<Product | null> {
     try {
       const productsRef = collection(db, 'products');
+      const q = query(productsRef, where('barcode', '==', barcode));
+      const snapshot = await getDocs(q);
+
+      if (!snapshot.empty) {
+        const doc = snapshot.docs[0];
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.name || '',
+          sku: data.sku || '',
+          description: data.description,
+          category_id: data.category_id || '',
+          supplier_id: data.supplier_id || '',
+          unit_price: data.unit_price || 0,
+          current_stock: data.current_stock || 0,
+          min_stock: data.min_stock || 0,
+          max_stock: data.max_stock,
+          unit: data.unit,
+          location: data.location,
+          barcode: data.barcode,
+          category_name: data.category_name,
+          supplier_name: data.supplier_name,
+          created_at: toISOString(data.created_at),
+          updated_at: toISOString(data.updated_at)
+        } as Product;
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error getting product by barcode:', error);
+      return null;
+    }
+  }
+
+  static async createProduct(product: Omit<Product, 'id' | 'created_at' | 'updated_at'>): Promise<Product> {
+    try {
+      // กรองค่า undefined ออก
+      const cleanProduct = Object.fromEntries(
+        Object.entries(product).filter(([_, value]) => value !== undefined && value !== null && value !== '')
+      );
+      
+      const productsRef = collection(db, 'products');
       const docRef = await addDoc(productsRef, {
-        ...product,
+        ...cleanProduct,
         created_at: serverTimestamp(),
         updated_at: serverTimestamp()
       });
@@ -252,16 +426,52 @@ export class FirestoreService {
     }
   }
 
-  static async updateProduct(id: string, product: Partial<Product>): Promise<void> {
+  static async updateProduct(id: string, product: Partial<Product>, retryCount = 0): Promise<void> {
+    const maxRetries = 3;
+    const retryDelay = 1000; // 1 second
+    
     try {
       const docRef = doc(db, 'products', id);
-      await updateDoc(docRef, {
-        ...product,
-        updated_at: serverTimestamp()
+      
+      // Filter out undefined values to prevent Firestore errors
+      const cleanProduct: any = {};
+      Object.keys(product).forEach(key => {
+        const value = (product as any)[key];
+        if (value !== undefined && value !== null) {
+          cleanProduct[key] = value;
+        }
       });
-    } catch (error) {
-      console.error('Error updating product:', error);
-      throw error;
+      
+      // Always add updated_at
+      cleanProduct.updated_at = serverTimestamp();
+      
+      console.log('🔄 Updating product with clean data:', id, cleanProduct);
+      await updateDoc(docRef, cleanProduct);
+      console.log('✅ Product updated successfully:', id);
+    } catch (error: any) {
+      console.error('❌ Error updating product:', error);
+      console.error('❌ Error code:', error.code);
+      console.error('❌ Error message:', error.message);
+      
+      // Handle network errors with retry
+      if ((error.code === 'unavailable' || error.code === 'deadline-exceeded' || error.message?.includes('network')) && retryCount < maxRetries) {
+        console.log(`🔄 Retrying update product (attempt ${retryCount + 1}/${maxRetries})...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay * (retryCount + 1)));
+        return this.updateProduct(id, product, retryCount + 1);
+      }
+      
+      // Handle specific Firestore errors
+      if (error.code === 'permission-denied') {
+        throw new Error('ไม่มีสิทธิ์ในการแก้ไขสินค้า');
+      } else if (error.code === 'not-found') {
+        throw new Error('ไม่พบสินค้าที่ต้องการแก้ไข');
+      } else if (error.code === 'unavailable') {
+        throw new Error('เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล กรุณาลองใหม่อีกครั้ง');
+      } else if (error.code === 'deadline-exceeded') {
+        throw new Error('การดำเนินการใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง');
+      } else {
+        throw new Error(`เกิดข้อผิดพลาดในการแก้ไขสินค้า: ${error.message}`);
+      }
     }
   }
 
@@ -280,20 +490,32 @@ export class FirestoreService {
 
   static async getCategories(): Promise<Category[]> {
     try {
+      // Check cache first
+      const cacheKey = 'categories';
+      const cachedCategories = this.getCachedData<Category[]>(cacheKey);
+      if (cachedCategories) {
+        console.log('📂 ใช้ข้อมูลหมวดหมู่จาก cache');
+        return cachedCategories;
+      }
+
       const categoriesRef = collection(db, 'categories');
       const snapshot = await getDocs(categoriesRef);
 
-      return snapshot.docs.map(doc => {
+      const categories = snapshot.docs.map(doc => {
         const data = doc.data();
         return {
           id: doc.id,
-          name: data.name || '',
-          description: data.description,
+          name: data.name || data.title || `หมวดหมู่ ${doc.id}`,
+          description: data.description || data.desc || '',
           is_medicine: data.is_medicine || false,
           created_at: toISOString(data.created_at),
           updated_at: toISOString(data.updated_at)
         } as Category;
       });
+
+      // Cache the results
+      this.setCachedData(cacheKey, categories);
+      return categories;
     } catch (error) {
       console.error('Error getting categories:', error);
       return [];
@@ -468,12 +690,26 @@ export class FirestoreService {
 
   static async createSupplier(supplier: Omit<Supplier, 'id' | 'created_at' | 'updated_at'>): Promise<Supplier> {
     try {
+      console.log('🔍 FirestoreService.createSupplier - เริ่มต้น:', supplier);
+      console.log('🔗 FirestoreService.createSupplier - db instance:', db);
+      
       const suppliersRef = collection(db, 'suppliers');
-      const docRef = await addDoc(suppliersRef, {
-        ...supplier,
+      console.log('📝 FirestoreService.createSupplier - collection reference:', suppliersRef);
+      
+      // กรองค่า undefined ออก
+      const cleanSupplier = Object.fromEntries(
+        Object.entries(supplier).filter(([_, value]) => value !== undefined && value !== null && value !== '')
+      );
+      
+      const dataToSave = {
+        ...cleanSupplier,
         created_at: serverTimestamp(),
         updated_at: serverTimestamp()
-      });
+      };
+      console.log('💾 FirestoreService.createSupplier - ข้อมูลที่จะบันทึก:', dataToSave);
+      
+      const docRef = await addDoc(suppliersRef, dataToSave);
+      console.log('✅ FirestoreService.createSupplier - บันทึกสำเร็จ, docRef:', docRef);
 
       const newSupplier = {
         id: docRef.id,
@@ -481,10 +717,60 @@ export class FirestoreService {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
-
+      
+      console.log('📋 FirestoreService.createSupplier - ส่งคืนข้อมูล:', newSupplier);
       return newSupplier;
     } catch (error) {
-      console.error('Error creating supplier:', error);
+      console.error('❌ FirestoreService.createSupplier - ข้อผิดพลาด:', error);
+      throw error;
+    }
+  }
+
+  // ฟังก์ชันสำหรับสร้างข้อมูลเริ่มต้น
+  static async initializeSuppliersCollection(): Promise<void> {
+    try {
+      console.log('🔧 กำลังสร้างข้อมูลเริ่มต้นใน suppliers collection...');
+      
+      const suppliersRef = collection(db, 'suppliers');
+      const snapshot = await getDocs(suppliersRef);
+      
+      if (snapshot.empty) {
+        console.log('📝 suppliers collection ว่างเปล่า กำลังสร้างข้อมูลเริ่มต้น...');
+        
+        const initialSuppliers = [
+          {
+            name: 'บริษัท ABC จำกัด',
+            email: 'contact@abc.com',
+            phone: '02-123-4567',
+            address: '123 ถนนสุขุมวิท กรุงเทพฯ 10110',
+            contact_person: 'คุณสมชาย ใจดี',
+            notes: 'ผู้จำหน่ายอุปกรณ์สำนักงาน'
+          },
+          {
+            name: 'บริษัท XYZ จำกัด',
+            email: 'info@xyz.com',
+            phone: '02-987-6543',
+            address: '456 ถนนรัชดาภิเษก กรุงเทพฯ 10400',
+            contact_person: 'คุณสมหญิง รักดี',
+            notes: 'ผู้จำหน่ายวัสดุก่อสร้าง'
+          }
+        ];
+        
+        for (const supplier of initialSuppliers) {
+          await addDoc(suppliersRef, {
+            ...supplier,
+            created_at: serverTimestamp(),
+            updated_at: serverTimestamp()
+          });
+          console.log(`✅ สร้างผู้จำหน่าย: ${supplier.name}`);
+        }
+        
+        console.log('🎉 สร้างข้อมูลเริ่มต้นใน suppliers collection สำเร็จ');
+      } else {
+        console.log('ℹ️ suppliers collection มีข้อมูลอยู่แล้ว');
+      }
+    } catch (error) {
+      console.error('❌ ข้อผิดพลาดในการสร้างข้อมูลเริ่มต้น:', error);
       throw error;
     }
   }
@@ -559,6 +845,70 @@ export class FirestoreService {
       return newMovement;
     } catch (error) {
       console.error('Error creating movement:', error);
+      throw error;
+    }
+  }
+
+  static async deleteMovement(movementId: string): Promise<void> {
+    try {
+      const movementRef = doc(db, 'stock_movements', movementId);
+      await deleteDoc(movementRef);
+      console.log('✅ Movement deleted successfully:', movementId);
+      
+      // Clear cache to ensure fresh data
+      this.cache.delete('movements');
+    } catch (error) {
+      console.error('Error deleting movement:', error);
+      throw error;
+    }
+  }
+
+  // Batch operations for better performance
+  static async batchUpdateProducts(updates: Array<{ id: string; data: Partial<Product> }>): Promise<void> {
+    try {
+      const batch = writeBatch(db);
+      
+      updates.forEach(({ id, data }) => {
+        const productRef = doc(db, 'products', id);
+        batch.update(productRef, {
+          ...data,
+          updated_at: serverTimestamp()
+        });
+      });
+      
+      await batch.commit();
+      
+      // Clear cache to ensure fresh data
+      this.cache.delete('products');
+      
+      console.log(`✅ Batch updated ${updates.length} products successfully`);
+    } catch (error) {
+      console.error('Error batch updating products:', error);
+      throw error;
+    }
+  }
+
+  static async batchCreateMovements(movements: Array<Omit<Movement, 'id'>>): Promise<void> {
+    try {
+      const batch = writeBatch(db);
+      
+      movements.forEach(movement => {
+        const movementRef = doc(collection(db, 'stock_movements'));
+        batch.set(movementRef, {
+          ...movement,
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp()
+        });
+      });
+      
+      await batch.commit();
+      
+      // Clear cache to ensure fresh data
+      this.cache.delete('movements');
+      
+      console.log(`✅ Batch created ${movements.length} movements successfully`);
+    } catch (error) {
+      console.error('Error batch creating movements:', error);
       throw error;
     }
   }
@@ -814,6 +1164,84 @@ export class FirestoreService {
       throw error;
     }
   }
+
+  // Withdrawals
+  static async getWithdrawals(): Promise<Withdrawal[]> {
+    try {
+      const q = query(collection(db, 'withdrawals'), orderBy('created_at', 'desc'));
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Withdrawal));
+    } catch (error) {
+      console.error('Error getting withdrawals:', error);
+      throw error;
+    }
+  }
+
+  static async createWithdrawal(withdrawal: Omit<Withdrawal, 'id'>): Promise<void> {
+    try {
+      await addDoc(collection(db, 'withdrawals'), {
+        ...withdrawal,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error creating withdrawal:', error);
+      throw error;
+    }
+  }
+
+  static async deleteWithdrawal(withdrawalId: string): Promise<void> {
+    try {
+      const withdrawalRef = doc(db, 'withdrawals', withdrawalId);
+      await deleteDoc(withdrawalRef);
+      console.log('✅ Withdrawal deleted successfully:', withdrawalId);
+    } catch (error) {
+      console.error('Error deleting withdrawal:', error);
+      throw error;
+    }
+  }
+
+  // Receipts
+  static async getReceipts(): Promise<Receipt[]> {
+    try {
+      const q = query(collection(db, 'receipts'), orderBy('created_at', 'desc'));
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Receipt));
+    } catch (error) {
+      console.error('Error getting receipts:', error);
+      throw error;
+    }
+  }
+
+  static async createReceipt(receipt: Omit<Receipt, 'id'>): Promise<void> {
+    try {
+      await addDoc(collection(db, 'receipts'), {
+        ...receipt,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error creating receipt:', error);
+      throw error;
+    }
+  }
+
+  static async deleteReceipt(receiptId: string): Promise<void> {
+    try {
+      const receiptRef = doc(db, 'receipts', receiptId);
+      await deleteDoc(receiptRef);
+      console.log('✅ Receipt deleted successfully:', receiptId);
+    } catch (error) {
+      console.error('Error deleting receipt:', error);
+      throw error;
+    }
+  }
 }
 
-export const firestoreService = FirestoreService;
+export const firestoreService = new FirestoreService();

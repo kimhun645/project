@@ -1,7 +1,6 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
-import { GlobalSearch } from '@/components/Search/GlobalSearch';
 import { BarcodeScannerIndicator } from '@/components/ui/barcode-scanner-indicator';
 
 interface PageHeaderProps {
@@ -48,14 +47,14 @@ export function PageHeader({
           
           {/* Right Side - Search and Action Buttons */}
           <div className="flex items-center gap-3">
-            {/* Global Search */}
+            {/* Search Input */}
             <div className="w-80">
-              <GlobalSearch 
-                className="w-full" 
+              <input
+                type="text"
                 placeholder={searchPlaceholder}
-                showFilters={true}
                 value={searchValue}
-                onChange={onSearchChange}
+                onChange={(e) => onSearchChange?.(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             

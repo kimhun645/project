@@ -21,11 +21,9 @@ const Movements = React.lazy(() => import('./pages/Movements'));
 const Scanner = React.lazy(() => import('./pages/Scanner'));
 const BudgetRequest = React.lazy(() => import('./pages/BudgetRequest'));
 const ApprovalPage = React.lazy(() => import('./pages/ApprovalPage'));
-const ApprovalHistory = React.lazy(() => import('./pages/ApprovalHistory'));
 const Reports = React.lazy(() => import('./pages/Reports'));
+const Profile = React.lazy(() => import('./pages/Profile'));
 const Settings = React.lazy(() => import('./pages/Settings'));
-const SecuritySettings = React.lazy(() => import('./pages/SecuritySettings'));
-const SearchResults = React.lazy(() => import('./pages/SearchResults'));
 const NotFound = React.lazy(() => import('./pages/NotFound'));
 
 // Enhanced loading component with better UX
@@ -154,14 +152,6 @@ function AppContent() {
           ),
         },
         {
-          path: "approval/list",
-          element: (
-            <Suspense fallback={<LoadingSpinner />}>
-              <ApprovalHistory />
-            </Suspense>
-          ),
-        },
-        {
           path: "approval/:request_id",
           element: (
             <Suspense fallback={<LoadingSpinner />}>
@@ -178,26 +168,18 @@ function AppContent() {
           ),
         },
         {
+          path: "profile",
+          element: (
+            <Suspense fallback={<LoadingSpinner />}>
+              <Profile />
+            </Suspense>
+          ),
+        },
+        {
           path: "settings",
           element: (
             <Suspense fallback={<LoadingSpinner />}>
               <Settings />
-            </Suspense>
-          ),
-        },
-        {
-          path: "security",
-          element: (
-            <Suspense fallback={<LoadingSpinner />}>
-              <SecuritySettings />
-            </Suspense>
-          ),
-        },
-        {
-          path: "search",
-          element: (
-            <Suspense fallback={<LoadingSpinner />}>
-              <SearchResults />
             </Suspense>
           ),
         },

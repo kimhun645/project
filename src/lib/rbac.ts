@@ -2,8 +2,7 @@
 export enum UserRole {
   ADMIN = 'admin',
   MANAGER = 'manager', 
-  STAFF = 'staff',
-  VIEWER = 'viewer'
+  STAFF = 'staff'
 }
 
 export enum Permission {
@@ -123,17 +122,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.VIEW_REPORTS,
     
     // Scanner
-    Permission.USE_SCANNER
-  ],
-  
-  [UserRole.VIEWER]: [
-    // ดูอย่างเดียว
-    Permission.VIEW_PRODUCTS,
-    Permission.VIEW_STOCK,
-    Permission.VIEW_CATEGORIES,
-    Permission.VIEW_SUPPLIERS,
-    Permission.VIEW_BUDGET_REQUESTS,
-    Permission.VIEW_REPORTS,
     Permission.USE_SCANNER
   ]
 };

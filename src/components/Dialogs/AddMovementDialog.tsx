@@ -27,16 +27,21 @@ import {
   CheckCircle2,
   TrendingUp,
   TrendingDown,
-  BarChart3
+  BarChart3,
+  ScanLine,
+  User,
+  UserCheck
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { firestoreService } from '@/lib/firestoreService';
+import { useBarcodeScanner } from '@/hooks/use-barcode-scanner';
 
 interface ProductForMovement {
   id: string;
   name: string;
   sku: string;
   current_stock: number;
+  barcode?: string;
 }
 
 interface AddMovementDialogProps {
@@ -49,13 +54,37 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [products, setProducts] = useState<ProductForMovement[]>([]);
   
+  // Barcode scanner
+  const { scannerDetected, lastScannedCode } = useBarcodeScanner({
+    onScan: (barcode) => {
+      console.log('🔍 Barcode scanned:', barcode);
+      // ค้นหาสินค้าจากบาร์โค้ด
+      const product = products.find(p => p.barcode === barcode);
+      if (product) {
+        updateFormData('product_id', product.id);
+        toast({
+          title: "สแกนบาร์โค้ดสำเร็จ",
+          description: `พบสินค้า: ${product.name}`,
+        });
+      } else {
+        toast({
+          title: "ไม่พบสินค้า",
+          description: `บาร์โค้ด "${barcode}" ไม่มีในระบบ`,
+          variant: "destructive",
+        });
+      }
+    }
+  });
+  
   const [formData, setFormData] = useState({
     product_id: '',
     type: '' as 'in' | 'out' | '',
     quantity: '',
     reason: '',
     reference: '',
-    notes: ''
+    notes: '',
+    person_name: '', // ผู้เบิก/ผู้รับ
+    person_role: '', // บทบาท (เบิก/รับ)
   });
 
   const resetForm = () => {
@@ -65,11 +94,19 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
       quantity: '',
       reason: '',
       reference: '',
-      notes: ''
+      notes: '',
+      person_name: '',
+      person_role: '',
     });
   };
 
   const handleOpenChange = (newOpen: boolean) => {
+    // ป้องกันการปิด modal เมื่อสแกนบาร์โค้ด
+    if (scannerDetected && newOpen === false) {
+      console.log('🚫 Modal close blocked - barcode scanning in progress');
+      return;
+    }
+    
     setOpen(newOpen);
     if (!newOpen) {
       resetForm();
@@ -103,6 +140,12 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // ป้องกันการ submit form เมื่อสแกนบาร์โค้ด
+    if (scannerDetected) {
+      console.log('🚫 Form submission blocked - barcode scanning in progress');
+      return;
+    }
+    
     if (!formData.product_id || !formData.type || !formData.quantity || !formData.reason) {
       toast({
         title: "กรุณากรอกข้อมูลให้ครบถ้วน",
@@ -110,6 +153,12 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
         variant: "destructive",
       });
       return;
+    }
+
+    // เพิ่ม validation สำหรับฟิลด์ใหม่ (ไม่บังคับ)
+    if (!formData.person_name) {
+      console.log('⚠️ Person name not provided, using default');
+      // ไม่ block การบันทึก แต่ใช้ค่า default
     }
 
     const quantity = parseInt(formData.quantity);
@@ -125,9 +174,13 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
     setIsLoading(true);
 
     try {
+      console.log('🔄 Starting movement creation:', formData);
+      
       // Get current product stock
       const product = await firestoreService.getProductById(formData.product_id);
       if (!product) throw new Error('ไม่พบสินค้า');
+      
+      console.log('📦 Product found:', product);
 
       // Check if stock out is possible
       if (formData.type === 'out' && (product.current_stock || 0) < quantity) {
@@ -141,23 +194,37 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
       }
 
       // Add movement record
-      await firestoreService.createMovement({
+      const movementData = {
         product_id: formData.product_id,
         type: formData.type,
         quantity: quantity,
         reason: formData.reason,
         reference: formData.reference || undefined,
-        notes: formData.notes || undefined
-      });
+        notes: formData.notes || undefined,
+        person_name: formData.person_name || 'ไม่ระบุ',
+        person_role: formData.type === 'out' ? 'เบิก' : 'รับ'
+      };
+      
+      console.log('📝 Creating movement with data:', movementData);
+      await firestoreService.createMovement(movementData);
+      console.log('✅ Movement created successfully');
 
       // Update product stock
       const newStock = formData.type === 'in' 
         ? (product.current_stock || 0) + quantity
         : (product.current_stock || 0) - quantity;
 
+      console.log('📊 Updating stock:', {
+        current: product.current_stock,
+        quantity: quantity,
+        type: formData.type,
+        newStock: newStock
+      });
+
       await firestoreService.updateProduct(formData.product_id, {
         current_stock: newStock
       });
+      console.log('✅ Stock updated successfully');
 
       toast({
         title: "บันทึกข้อมูลเรียบร้อย",
@@ -169,10 +236,15 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
       onMovementAdded();
 
     } catch (error) {
-      console.error('Error adding movement:', error);
+      console.error('❌ Error adding movement:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        code: error.code,
+        stack: error.stack
+      });
       toast({
         title: "เกิดข้อผิดพลาด",
-        description: "ไม่สามารถบันทึกข้อมูลได้",
+        description: `ไม่สามารถบันทึกข้อมูลได้: ${error.message || 'Unknown error'}`,
         variant: "destructive",
       });
     } finally {
@@ -237,6 +309,14 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
                 <DialogDescription className="text-sm text-slate-600 font-medium mt-1">
                   บันทึกการรับเข้าหรือเบิกออกสินค้าในระบบ
                 </DialogDescription>
+                {scannerDetected && (
+                  <div className="flex items-center space-x-1 mt-2">
+                    <ScanLine className="h-3 w-3 text-green-600" />
+                    <span className="text-xs text-green-600 font-medium">
+                      สแกนบาร์โค้ด: {lastScannedCode}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
             <DialogClose className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl p-2 transition-all duration-200 hover:scale-110 z-30 relative -mr-2 -mt-2">
@@ -246,6 +326,16 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="relative z-10 space-y-4 py-4 px-6 max-h-[calc(90vh-120px)] overflow-y-auto">
+          {/* Barcode Scanner Section */}
+          {scannerDetected && (
+            <div className="p-3 bg-green-100 border-2 border-green-300 rounded-lg flex items-center animate-pulse">
+              <ScanLine className="h-4 w-4 text-green-700 mr-2" />
+              <span className="text-sm text-green-800 font-bold">
+                สแกนสำเร็จ: {lastScannedCode}
+              </span>
+            </div>
+          )}
+
           {/* Product Selection Section */}
           <div className="space-y-3">
             <div className="flex items-center space-x-2 mb-2">
@@ -262,20 +352,12 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
               </Label>
               <Select value={formData.product_id} onValueChange={(value) => updateFormData('product_id', value)}>
                 <SelectTrigger className="h-9 text-sm border-2 border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white hover:bg-slate-50 transition-all duration-200 shadow-sm hover:shadow-md rounded-lg">
-                  <SelectValue placeholder="เลือกสินค้าที่ต้องการบันทึกการเคลื่อนไหว" />
+                  <SelectValue placeholder="เลือกสินค้าหรือสแกนบาร์โค้ด" />
                 </SelectTrigger>
                 <SelectContent className="relative z-50 rounded-lg border-2 border-slate-200 shadow-xl">
                   {products.map((product) => (
                     <SelectItem key={product.id} value={product.id} className="text-sm py-2 hover:bg-blue-50">
-                      <div className="flex items-center justify-between w-full">
-                        <div>
-                          <div className="font-semibold">{product.name}</div>
-                          <div className="text-xs text-gray-500">SKU: {product.sku}</div>
-                        </div>
-                        <div className="text-xs text-blue-600 font-medium ml-2">
-                          สต็อก: {product.current_stock || 0}
-                        </div>
-                      </div>
+                      <div className="font-semibold">{product.name}</div>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -288,11 +370,22 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
                   <div>
                     <h4 className="font-semibold text-gray-800 text-sm">{selectedProduct.name}</h4>
                     <p className="text-xs text-gray-600">SKU: {selectedProduct.sku}</p>
+                    {selectedProduct.barcode && (
+                      <p className="text-xs text-green-600">บาร์โค้ด: {selectedProduct.barcode}</p>
+                    )}
                   </div>
                   <div className="text-xs text-blue-600 font-medium bg-blue-100 px-2 py-1 rounded">
                     สต็อกปัจจุบัน: {selectedProduct.current_stock}
                   </div>
                 </div>
+                {scannerDetected && (
+                  <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded flex items-center">
+                    <ScanLine className="h-3 w-3 text-green-600 mr-2" />
+                    <span className="text-xs text-green-700">
+                      สแกนบาร์โค้ด: {lastScannedCode}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -479,6 +572,42 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
             </div>
           </div>
 
+          {/* Person Information Section - แสดงตามประเภท */}
+          {formData.type && (
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2 mb-2">
+                <div className="p-1.5 bg-gradient-to-r from-orange-500 to-red-600 rounded-lg">
+                  {formData.type === 'out' ? <User className="h-3 w-3 text-white" /> : <UserCheck className="h-3 w-3 text-white" />}
+                </div>
+                <h3 className="text-base font-semibold text-slate-800">
+                  {formData.type === 'out' ? 'ข้อมูลผู้เบิก' : 'ข้อมูลผู้รับสินค้า'}
+                </h3>
+              </div>
+              
+              <div className="p-3 bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 rounded-lg">
+                <div className="flex items-center space-x-2 mb-2">
+                  {formData.type === 'out' ? <User className="h-4 w-4 text-orange-600" /> : <UserCheck className="h-4 w-4 text-orange-600" />}
+                  <span className="text-sm text-orange-700 font-medium">
+                    {formData.type === 'out' ? 'กรอกข้อมูลผู้เบิกสินค้า' : 'กรอกข้อมูลผู้รับสินค้า'}
+                  </span>
+                </div>
+                
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-slate-700 flex items-center">
+                    <span className="text-red-500 mr-1">*</span>
+                    {formData.type === 'out' ? 'ชื่อผู้เบิก' : 'ชื่อผู้รับสินค้า'}
+                  </Label>
+                  <Input
+                    value={formData.person_name}
+                    onChange={(e) => updateFormData('person_name', e.target.value)}
+                    placeholder={formData.type === 'out' ? 'กรอกชื่อผู้เบิกสินค้า' : 'กรอกชื่อผู้รับสินค้า'}
+                    className="h-9 text-sm border-2 border-orange-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-100 bg-white hover:bg-orange-50 transition-all duration-200 shadow-sm hover:shadow-md rounded-lg"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Action Buttons */}
           <div className="relative z-10 flex justify-end space-x-3 pt-6 px-6 border-t border-pink-200/60 bg-gradient-to-r from-pink-50/95 to-white/95 backdrop-blur-sm">
             <Button 
@@ -494,13 +623,18 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
             </Button>
             <Button 
               type="submit" 
-              disabled={isLoading || (isStockOut && newStock < 0)}
-              className="h-11 px-8 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white text-sm font-bold shadow-xl hover:shadow-2xl transition-all duration-200 rounded-xl border-0"
+              disabled={isLoading || (isStockOut && newStock < 0) || scannerDetected}
+              className="h-11 px-8 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white text-sm font-bold shadow-xl hover:shadow-2xl transition-all duration-200 rounded-xl border-0 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   กำลังบันทึก...
+                </>
+              ) : scannerDetected ? (
+                <>
+                  <ScanLine className="mr-2 h-4 w-4 animate-pulse" />
+                  กำลังสแกนบาร์โค้ด...
                 </>
               ) : (
                 <>

@@ -11,13 +11,19 @@ import { useToast } from '@/hooks/use-toast';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { User, Bell, Shield, Palette, Upload, Download, Trash2, Settings as SettingsIcon, Package, Key, CreditCard, Plus, FileEdit as Edit, Trash, CheckCircle, AlertTriangle, RefreshCw, Mail, Globe, Lock, Users, FileText, BarChart3, Crown, UserCheck, UserX, LogOut } from 'lucide-react';
+import { User, Bell, Shield, Palette, Upload, Download, Trash2, Settings as SettingsIcon, Package, Key, CreditCard, Plus, FileEdit as Edit, Trash, CheckCircle, AlertTriangle, RefreshCw, Mail, Globe, Lock, Users, FileText, BarChart3, Crown, UserCheck, UserX, LogOut, Search, Filter, Grid3x3 as Grid3X3, List } from 'lucide-react';
 import { Layout } from '@/components/Layout/Layout';
+import { useAuth } from '@/contexts/AuthContext';
+import { FirestoreService } from '@/lib/firestoreService';
 import { UserManagement } from '@/components/UserManagement';
 import { RoleManagement } from '@/components/RoleManagement';
 import { AccountManagement } from '@/components/AccountManagement';
-import { useAuth } from '@/contexts/AuthContext';
-import { FirestoreService } from '@/lib/firestoreService';
+import {
+  ProductsStylePageLayout,
+  ProductsStylePageHeader,
+  ProductsStyleStatsCards,
+  type StatCard
+} from '@/components/ui/products-style-components';
 
 // Schema สำหรับการตั้งค่า
 const settingsSchema = z.object({
@@ -55,6 +61,15 @@ export default function Settings() {
   const { toast } = useToast();
   const { currentUser, isLoading, signOut, hasPermission } = useAuth();
   const [activeTab, setActiveTab] = useState('general');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+  const [statsData, setStatsData] = useState({
+    totalUsers: 0,
+    totalRoles: 3, // Fixed roles: staff, manager, admin
+    totalAccountCodes: 0,
+    totalSettings: 8 // Fixed settings categories
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
 
   const form = useForm<SettingsFormData>({
     resolver: zodResolver(settingsSchema),
@@ -81,7 +96,38 @@ export default function Settings() {
 
   useEffect(() => {
     loadSettings();
+    loadStatsData();
   }, []);
+
+  const loadStatsData = async () => {
+    setStatsLoading(true);
+    try {
+      // Load users count
+      console.log('🔍 กำลังดึงข้อมูลผู้ใช้...');
+      const users = await FirestoreService.getUsers();
+      console.log('👥 จำนวนผู้ใช้ที่ได้:', users.length, users);
+      
+      // Load account codes count
+      console.log('🔍 กำลังดึงข้อมูลรหัสบัญชี...');
+      const accountCodes = await FirestoreService.getAccountCodes();
+      console.log('🔑 จำนวนรหัสบัญชีที่ได้:', accountCodes.length, accountCodes);
+      
+      const newStatsData = {
+        totalUsers: users.length,
+        totalRoles: 3, // Fixed: staff, manager, admin
+        totalAccountCodes: accountCodes.length,
+        totalSettings: 8 // Fixed: general, notifications, security, theme, etc.
+      };
+      
+      console.log('📊 สถิติที่ได้:', newStatsData);
+      setStatsData(newStatsData);
+    } catch (error) {
+      console.error('❌ ข้อผิดพลาดในการโหลดข้อมูลสถิติ:', error);
+      // Keep default values if error occurs
+    } finally {
+      setStatsLoading(false);
+    }
+  };
 
   const loadSettings = async () => {
     try {
@@ -141,6 +187,34 @@ export default function Settings() {
     }
   };
 
+  // Stats cards data with real data
+  const statsCards: StatCard[] = [
+    {
+      title: "ผู้ใช้ทั้งหมด",
+      value: statsLoading ? "..." : statsData.totalUsers.toString(),
+      icon: <Users className="h-6 w-6" />,
+      color: "blue",
+    },
+    {
+      title: "บทบาทที่ใช้งาน",
+      value: statsLoading ? "..." : statsData.totalRoles.toString(),
+      icon: <Shield className="h-6 w-6" />,
+      color: "green",
+    },
+    {
+      title: "รหัสบัญชี",
+      value: statsLoading ? "..." : statsData.totalAccountCodes.toString(),
+      icon: <Key className="h-6 w-6" />,
+      color: "purple",
+    },
+    {
+      title: "การตั้งค่า",
+      value: statsLoading ? "..." : statsData.totalSettings.toString(),
+      icon: <SettingsIcon className="h-6 w-6" />,
+      color: "orange",
+    },
+  ];
+
   const handleDeleteAllData = async () => {
       try {
       toast({
@@ -196,26 +270,36 @@ export default function Settings() {
   const canManageSettings = hasPermission('settings:read');
 
   return (
-    <Layout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">การตั้งค่าระบบ</h1>
-            <p className="text-gray-600">จัดการการตั้งค่าและผู้ใช้ในระบบ</p>
-              </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="text-sm text-gray-600">เข้าสู่ระบบเป็น</p>
-              <p className="font-semibold text-gray-900">{currentUser.displayName}</p>
-              <p className="text-xs text-gray-500">{currentUser.role === 'admin' ? 'ผู้ดูแลระบบ' : currentUser.role === 'manager' ? 'ผู้จัดการ' : 'ผู้ใช้งาน'}</p>
-                </div>
-            <Button variant="outline" onClick={handleSignOut}>
-              <LogOut className="h-4 w-4 mr-2" />
-              ออกจากระบบ
-            </Button>
-              </div>
-            </div>
+    <ProductsStylePageLayout>
+      <ProductsStylePageHeader
+        title="การตั้งค่าระบบ"
+        description="จัดการการตั้งค่าและผู้ใช้ในระบบ"
+        icon={SettingsIcon}
+        searchPlaceholder="ค้นหาการตั้งค่า..."
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        onRefresh={() => {
+          setSearchTerm('');
+          loadStatsData();
+          toast({ title: "รีเฟรชการตั้งค่า", description: "โหลดข้อมูลใหม่เรียบร้อยแล้ว" });
+        }}
+        primaryAction={
+          <Button onClick={handleSignOut} variant="outline" className="text-red-600 border-red-200 hover:bg-red-50">
+            <LogOut className="h-4 w-4 mr-2" />
+            ออกจากระบบ
+          </Button>
+        }
+        secondaryActions={[
+          <Button key="view-mode" variant="outline" onClick={() => setViewMode(viewMode === 'table' ? 'grid' : 'table')}>
+            {viewMode === 'table' ? <Grid3X3 className="h-4 w-4 mr-2" /> : <List className="h-4 w-4 mr-2" />}
+            {viewMode === 'table' ? 'Grid View' : 'Table View'}
+          </Button>
+        ]}
+      />
+
+      <div className="space-y-6 mt-6">
+        {/* Stats Cards */}
+        <ProductsStyleStatsCards cards={statsCards} />
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
@@ -442,15 +526,16 @@ export default function Settings() {
 
           {/* User Management */}
           <TabsContent value="users">
-            <UserManagement currentUserRole={currentUser.role} />
+            <UserManagement />
           </TabsContent>
 
           {/* Role Management */}
           <TabsContent value="roles">
-            <RoleManagement currentUserRole={currentUser.role} />
+            <RoleManagement />
           </TabsContent>
         </Tabs>
       </div>
-    </Layout>
+
+    </ProductsStylePageLayout>
   );
 }

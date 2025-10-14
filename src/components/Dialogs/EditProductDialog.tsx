@@ -11,22 +11,26 @@ import { CalendarIcon, Edit3, Save, Loader2, Package, Building2, Tag, DollarSign
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { api as apiService } from '@/lib/apiService';
-import { toast } from '@/hooks/use-toast';
+import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { firestoreService, FirestoreService } from '@/lib/firestoreService';
 
 interface Product {
   id: string;
   name: string;
-  description: string;
+  sku: string;
+  description?: string;
   category_id: string;
   supplier_id: string;
-  barcode: string;
-  location: string;
-  cost_price: number;
-  selling_price: number;
-  stock_quantity: number;
-  min_stock_level: number;
-  expiry_date: string | null;
+  unit_price: number;
+  current_stock: number;
+  min_stock: number;
+  max_stock?: number;
+  unit?: string;
+  location?: string;
+  barcode?: string;
+  category_name?: string;
+  supplier_name?: string;
   created_at: string;
   updated_at: string;
 }
@@ -58,17 +62,20 @@ export function EditProductDialog({
   variant = 'colorful',
   size = 'lg'
 }: EditProductDialogProps) {
+  const { toast } = useToast();
   const [formData, setFormData] = useState({
     name: '',
+    sku: '',
     description: '',
     category_id: '',
     supplier_id: '',
     barcode: '',
     location: '',
-    cost_price: 0,
-    selling_price: 0,
-    stock_quantity: 0,
-    min_stock_level: 0,
+    unit_price: 0,
+    current_stock: 0,
+    min_stock: 0,
+    max_stock: 0,
+    unit: '',
     expiry_date: null as Date | null,
   });
 
@@ -81,15 +88,17 @@ export function EditProductDialog({
     if (product) {
       setFormData({
         name: product.name || '',
+        sku: product.sku || '',
         description: product.description || '',
         category_id: product.category_id || '',
         supplier_id: product.supplier_id || '',
         barcode: product.barcode || '',
         location: product.location || '',
-        cost_price: product.cost_price || 0,
-        selling_price: product.selling_price || 0,
-        stock_quantity: product.stock_quantity || 0,
-        min_stock_level: product.min_stock_level || 0,
+        unit_price: product.unit_price || 0,
+        current_stock: product.current_stock || 0,
+        min_stock: product.min_stock || 0,
+        max_stock: product.max_stock || 0,
+        unit: product.unit || '',
         expiry_date: product.expiry_date ? new Date(product.expiry_date) : null,
       });
     }
@@ -105,8 +114,8 @@ export function EditProductDialog({
     setIsDataLoading(true);
     try {
       const [categoriesData, suppliersData] = await Promise.all([
-        apiService.getCategories(),
-        apiService.getSuppliers(),
+        FirestoreService.getCategories(),
+        FirestoreService.getSuppliers(),
       ]);
       setCategories(categoriesData);
       setSuppliers(suppliersData);
@@ -126,14 +135,60 @@ export function EditProductDialog({
     e.preventDefault();
     if (!product) return;
 
+    // Validate required fields
+    if (!formData.name.trim()) {
+      toast({
+        title: "ข้อมูลไม่ครบถ้วน",
+        description: "กรุณากรอกชื่อสินค้า",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.category_id) {
+      toast({
+        title: "ข้อมูลไม่ครบถ้วน",
+        description: "กรุณาเลือกหมวดหมู่",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.supplier_id) {
+      toast({
+        title: "ข้อมูลไม่ครบถ้วน",
+        description: "กรุณาเลือกผู้จำหน่าย",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const updateData = {
-        ...formData,
-        expiry_date: formData.expiry_date ? formData.expiry_date.toISOString() : null,
+      // Prepare update data, excluding undefined values
+      const updateData: any = {
+        name: formData.name,
+        sku: formData.sku,
+        description: formData.description || '',
+        category_id: formData.category_id,
+        supplier_id: formData.supplier_id,
+        unit_price: formData.unit_price,
+        current_stock: formData.current_stock,
+        min_stock: formData.min_stock,
+        max_stock: formData.max_stock || 0,
+        unit: formData.unit || '',
+        location: formData.location || '',
+        barcode: formData.barcode || '',
       };
 
-      await apiService.updateProduct(product.id, updateData);
+      // Only add expiry_date if it exists
+      if (formData.expiry_date) {
+        updateData.expiry_date = formData.expiry_date.toISOString();
+      }
+
+      console.log('🔄 Updating product:', product.id, updateData);
+      await FirestoreService.updateProduct(product.id, updateData);
+      
       toast({
         title: "สำเร็จ",
         description: "แก้ไขสินค้าสำเร็จ",
@@ -141,11 +196,17 @@ export function EditProductDialog({
       });
       onSuccess();
       onOpenChange(false);
-    } catch (error) {
-      console.error('Error updating product:', error);
+    } catch (error: any) {
+      console.error('❌ Error updating product:', error);
+      
+      let errorMessage = "เกิดข้อผิดพลาดในการแก้ไขสินค้า";
+      if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "เกิดข้อผิดพลาด",
-        description: "เกิดข้อผิดพลาดในการแก้ไขสินค้า",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -192,15 +253,31 @@ export function EditProductDialog({
               </div>
 
               <div className="space-y-1">
-                <Label htmlFor="description" className="text-xs font-semibold text-slate-700">รายละเอียดสินค้า</Label>
+                <Label htmlFor="sku" className="text-xs font-semibold text-slate-700 flex items-center">
+                  <span className="text-red-500 mr-1">*</span>
+                  SKU
+                </Label>
                 <Input
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  placeholder="รายละเอียดสินค้า"
+                  id="sku"
+                  value={formData.sku}
+                  onChange={(e) => setFormData({...formData, sku: e.target.value})}
+                  placeholder="SKU-0001"
                   className="h-9 text-sm border-2 border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 bg-white hover:bg-slate-50 transition-all duration-200 shadow-sm hover:shadow-md rounded-lg"
+                  required
                 />
               </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="description" className="text-xs font-semibold text-slate-700">รายละเอียดสินค้า</Label>
+              <Textarea
+                id="description"
+                value={formData.description}
+                onChange={(e) => setFormData({...formData, description: e.target.value})}
+                placeholder="รายละเอียดสินค้า"
+                className="text-sm border-2 border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 bg-white hover:bg-slate-50 transition-all duration-200 shadow-sm hover:shadow-md rounded-lg"
+                rows={3}
+              />
             </div>
           </div>
 
@@ -307,38 +384,34 @@ export function EditProductDialog({
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label htmlFor="cost_price" className="text-xs font-semibold text-slate-700">ราคาต้นทุน (บาท)</Label>
+                <Label htmlFor="unit_price" className="text-xs font-semibold text-slate-700 flex items-center">
+                  <span className="text-red-500 mr-1">*</span>
+                  ราคาต่อหน่วย (บาท)
+                </Label>
                 <div className="relative">
                   <Input
-                    id="cost_price"
+                    id="unit_price"
                     type="number"
                     step="0.01"
-                    value={formData.cost_price}
-                    onChange={(e) => setFormData({...formData, cost_price: parseFloat(e.target.value) || 0})}
+                    value={formData.unit_price}
+                    onChange={(e) => setFormData({...formData, unit_price: parseFloat(e.target.value) || 0})}
                     placeholder="0.00"
                     className="h-9 text-sm border-2 border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 bg-white hover:bg-slate-50 transition-all duration-200 shadow-sm hover:shadow-md rounded-lg pl-7"
+                    required
                   />
                   <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-slate-500 text-xs">฿</span>
                 </div>
               </div>
 
               <div className="space-y-1">
-                <Label htmlFor="selling_price" className="text-xs font-semibold text-slate-700 flex items-center">
-                  <span className="text-red-500 mr-1">*</span>
-                  ราคาขาย (บาท)
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="selling_price"
-                    type="number"
-                    step="0.01"
-                    value={formData.selling_price}
-                    onChange={(e) => setFormData({...formData, selling_price: parseFloat(e.target.value) || 0})}
-                    placeholder="0.00"
-                    className="h-9 text-sm border-2 border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 bg-white hover:bg-slate-50 transition-all duration-200 shadow-sm hover:shadow-md rounded-lg pl-7"
-                  />
-                  <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-slate-500 text-xs">฿</span>
-                </div>
+                <Label htmlFor="unit" className="text-xs font-semibold text-slate-700">หน่วยนับ</Label>
+                <Input
+                  id="unit"
+                  value={formData.unit}
+                  onChange={(e) => setFormData({...formData, unit: e.target.value})}
+                  placeholder="เช่น ชิ้น, กล่อง, แพ็ค"
+                  className="h-9 text-sm border-2 border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 bg-white hover:bg-slate-50 transition-all duration-200 shadow-sm hover:shadow-md rounded-lg"
+                />
               </div>
             </div>
           </div>
@@ -354,28 +427,40 @@ export function EditProductDialog({
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label htmlFor="stock_quantity" className="text-xs font-semibold text-slate-700">สต็อกปัจจุบัน</Label>
+                <Label htmlFor="current_stock" className="text-xs font-semibold text-slate-700">สต็อกปัจจุบัน</Label>
                 <Input
-                  id="stock_quantity"
+                  id="current_stock"
                   type="number"
-                  value={formData.stock_quantity}
-                  onChange={(e) => setFormData({...formData, stock_quantity: parseInt(e.target.value) || 0})}
+                  value={formData.current_stock}
+                  onChange={(e) => setFormData({...formData, current_stock: parseInt(e.target.value) || 0})}
                   placeholder="0"
                   className="h-9 text-sm border-2 border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 bg-white hover:bg-slate-50 transition-all duration-200 shadow-sm hover:shadow-md rounded-lg"
                 />
               </div>
 
               <div className="space-y-1">
-                <Label htmlFor="min_stock_level" className="text-xs font-semibold text-slate-700">สต็อกขั้นต่ำ</Label>
+                <Label htmlFor="min_stock" className="text-xs font-semibold text-slate-700">สต็อกขั้นต่ำ</Label>
                 <Input
-                  id="min_stock_level"
+                  id="min_stock"
                   type="number"
-                  value={formData.min_stock_level}
-                  onChange={(e) => setFormData({...formData, min_stock_level: parseInt(e.target.value) || 0})}
+                  value={formData.min_stock}
+                  onChange={(e) => setFormData({...formData, min_stock: parseInt(e.target.value) || 0})}
                   placeholder="0"
                   className="h-9 text-sm border-2 border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 bg-white hover:bg-slate-50 transition-all duration-200 shadow-sm hover:shadow-md rounded-lg"
                 />
               </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="max_stock" className="text-xs font-semibold text-slate-700">สต็อกสูงสุด</Label>
+              <Input
+                id="max_stock"
+                type="number"
+                value={formData.max_stock}
+                onChange={(e) => setFormData({...formData, max_stock: parseInt(e.target.value) || 0})}
+                placeholder="0"
+                className="h-9 text-sm border-2 border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 bg-white hover:bg-slate-50 transition-all duration-200 shadow-sm hover:shadow-md rounded-lg"
+              />
             </div>
           </div>
 
@@ -445,3 +530,4 @@ export function EditProductDialog({
     </ResponsiveModal>
   );
 }
+
