@@ -263,6 +263,23 @@ export default function Products() {
   // Define columns for data table
   const columns: TableColumn[] = [
     {
+      key: 'id',
+      title: 'เลขที่รายการ',
+      sortable: false,
+      render: (value, product) => {
+        // หา index ของรายการใน filteredProducts ทั้งหมด
+        const productIndex = filteredProducts.findIndex(p => p.id === product.id);
+        const rowNumber = productIndex + 1;
+        return (
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-mono text-slate-600">
+              #{rowNumber}
+            </span>
+          </div>
+        );
+      }
+    },
+    {
       key: 'name',
       title: 'ชื่อสินค้า',
       sortable: true,
