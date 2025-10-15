@@ -9,7 +9,7 @@ const routeLabels: Record<string, string> = {
   '/products': 'สินค้า',
   '/categories': 'หมวดหมู่',
   '/suppliers': 'ผู้จำหน่าย',
-  '/movements': 'การเคลื่อนไหวสต็อก',
+  '/movements': 'การเบิก/การรับพัสดุ',
   '/scanner': 'สแกนบาร์โค้ด',
   '/budget-request': 'ขอใช้งบประมาณ',
   '/approval': 'การอนุมัติ',

@@ -11,7 +11,39 @@ import { useToast } from '@/hooks/use-toast';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { User, Bell, Shield, Palette, Upload, Download, Trash2, Settings as SettingsIcon, Package, Key, CreditCard, Plus, FileEdit as Edit, Trash, CheckCircle, AlertTriangle, RefreshCw, Mail, Globe, Lock, Users, FileText, BarChart3, Crown, UserCheck, UserX, LogOut, Search, Filter, Grid3x3 as Grid3X3, List } from 'lucide-react';
+import { 
+  User, 
+  Bell, 
+  Shield, 
+  Palette, 
+  Upload, 
+  Download, 
+  Trash2, 
+  Settings as SettingsIcon, 
+  Package, 
+  Key, 
+  CreditCard, 
+  Plus, 
+  FileEdit as Edit, 
+  Trash, 
+  CheckCircle, 
+  AlertTriangle, 
+  RefreshCw, 
+  Mail, 
+  Globe, 
+  Lock, 
+  Users, 
+  FileText, 
+  BarChart3, 
+  Crown, 
+  UserCheck, 
+  UserX, 
+  LogOut, 
+  Search, 
+  Filter, 
+  Grid3x3 as Grid3X3, 
+  List 
+} from 'lucide-react';
 import { Layout } from '@/components/Layout/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { FirestoreService } from '@/lib/firestoreService';
@@ -103,14 +135,10 @@ export default function Settings() {
     setStatsLoading(true);
     try {
       // Load users count
-      console.log('🔍 กำลังดึงข้อมูลผู้ใช้...');
       const users = await FirestoreService.getUsers();
-      console.log('👥 จำนวนผู้ใช้ที่ได้:', users.length, users);
       
       // Load account codes count
-      console.log('🔍 กำลังดึงข้อมูลรหัสบัญชี...');
       const accountCodes = await FirestoreService.getAccountCodes();
-      console.log('🔑 จำนวนรหัสบัญชีที่ได้:', accountCodes.length, accountCodes);
       
       const newStatsData = {
         totalUsers: users.length,
@@ -119,10 +147,9 @@ export default function Settings() {
         totalSettings: 8 // Fixed: general, notifications, security, theme, etc.
       };
       
-      console.log('📊 สถิติที่ได้:', newStatsData);
       setStatsData(newStatsData);
     } catch (error) {
-      console.error('❌ ข้อผิดพลาดในการโหลดข้อมูลสถิติ:', error);
+      console.error('Error loading stats data:', error);
       // Keep default values if error occurs
     } finally {
       setStatsLoading(false);

@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Separator } from '@/components/ui/separator';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/contexts/AuthContext';
 import { ChangePasswordDialog } from '@/components/Dialogs/ChangePasswordDialog';
 import { 
@@ -19,11 +22,29 @@ import {
   AlertTriangle,
   UserCheck,
   Activity,
-  RefreshCw
+  RefreshCw,
+  Bell,
+  Settings,
+  Camera,
+  Save,
+  X,
+  Eye,
+  EyeOff,
+  Lock,
+  Unlock,
+  Smartphone,
+  Monitor,
+  Globe,
+  Database,
+  BarChart3,
+  TrendingUp,
+  Award,
+  Star,
+  Heart,
+  Zap
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Layout } from '@/components/Layout/Layout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function Profile() {
   const { currentUser, signOut } = useAuth();
@@ -32,24 +53,62 @@ export default function Profile() {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({
     displayName: currentUser?.displayName || '',
-    email: currentUser?.email || ''
+    email: currentUser?.email || '',
+    phone: '',
+    department: '',
+    position: ''
   });
+
+  // Mock data for demonstration
+  const [userStats] = useState({
+    totalLogins: 156,
+    lastLogin: '2024-01-15T10:30:00Z',
+    sessionDuration: '2h 45m',
+    actionsToday: 23,
+    totalActions: 1247,
+    rank: 'Gold',
+    level: 8,
+    experience: 75
+  });
+
+  const [notifications, setNotifications] = useState({
+    email: true,
+    push: false,
+    sms: true,
+    weekly: true,
+    monthly: false,
+    security: true,
+    updates: true
+  });
+
+  const [preferences, setPreferences] = useState({
+    theme: 'light',
+    language: 'th',
+    timezone: 'Asia/Bangkok',
+    dateFormat: 'DD/MM/YYYY',
+    currency: 'THB'
+  });
+
+  useEffect(() => {
+    if (currentUser) {
+      setEditData({
+        displayName: currentUser.displayName || '',
+        email: currentUser.email || '',
+        phone: '',
+        department: '',
+        position: ''
+      });
+    }
+  }, [currentUser]);
 
   const handleEdit = () => {
     setIsEditing(true);
-    setEditData({
-      displayName: currentUser?.displayName || '',
-      email: currentUser?.email || ''
-    });
   };
 
   const handleSave = () => {
-    // Here you would typically update the user profile
-    // For now, we'll just show a success message
     toast({
       title: "บันทึกสำเร็จ",
-      description: "ข้อมูลโปรไฟล์ได้รับการอัปเดตเรียบร้อยแล้ว",
-      variant: "default"
+      description: "ข้อมูลส่วนตัวได้รับการอัปเดตแล้ว",
     });
     setIsEditing(false);
   };
@@ -58,357 +117,440 @@ export default function Profile() {
     setIsEditing(false);
     setEditData({
       displayName: currentUser?.displayName || '',
-      email: currentUser?.email || ''
+      email: currentUser?.email || '',
+      phone: '',
+      department: '',
+      position: ''
     });
   };
 
-  const getRoleDisplayName = (role: string) => {
-    switch (role) {
-      case 'admin':
-        return 'ผู้ดูแลระบบ';
-      case 'manager':
-        return 'ผู้จัดการ';
-      case 'staff':
-        return 'เจ้าหน้าที่';
-      default:
-        return 'ไม่ระบุ';
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      toast({
+        title: "ออกจากระบบ",
+        description: "คุณได้ออกจากระบบเรียบร้อยแล้ว",
+      });
+    } catch (error) {
+      toast({
+        title: "เกิดข้อผิดพลาด",
+        description: "ไม่สามารถออกจากระบบได้",
+        variant: "destructive",
+      });
     }
   };
 
-  const getRoleColor = (role: string) => {
-    switch (role) {
-      case 'admin':
-        return 'bg-red-100 text-red-800 border-red-200';
-      case 'manager':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'staff':
-        return 'bg-green-100 text-green-800 border-green-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
+  const handleNotificationChange = (key: string, value: boolean) => {
+    setNotifications(prev => ({ ...prev, [key]: value }));
+    toast({
+      title: "การตั้งค่าอัปเดต",
+      description: `การแจ้งเตือน ${key} ได้รับการอัปเดตแล้ว`,
+    });
   };
 
-  if (!currentUser) {
-    return (
-      <Layout>
-        <div className="text-center py-12">
-          <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">ไม่พบข้อมูลผู้ใช้</h2>
-          <p className="text-gray-600">กรุณาเข้าสู่ระบบใหม่</p>
-        </div>
-      </Layout>
-    );
-  }
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(word => word.charAt(0))
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  const getRankColor = (rank: string) => {
+    switch (rank) {
+      case 'Gold': return 'bg-yellow-500';
+      case 'Silver': return 'bg-gray-400';
+      case 'Bronze': return 'bg-orange-500';
+      default: return 'bg-blue-500';
+    }
+  };
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-        {/* Hero Section */}
-        <div className="relative overflow-hidden bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-700 rounded-2xl shadow-2xl mb-8">
-          {/* Background Pattern */}
-          <div className="absolute inset-0 bg-black/10"></div>
-          <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full -translate-y-48 translate-x-48"></div>
-          <div className="absolute bottom-0 left-0 w-80 h-80 bg-white/5 rounded-full translate-y-40 -translate-x-40"></div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-6">
+        <div className="max-w-7xl mx-auto space-y-8">
           
-          <div className="relative px-8 py-12">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-6">
-                {/* Avatar */}
+          {/* Header Section */}
+          <div className="relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 rounded-3xl opacity-90"></div>
+            <div className="relative bg-white/10 backdrop-blur-lg rounded-3xl p-8 border border-white/20">
+              <div className="flex flex-col lg:flex-row items-start lg:items-center gap-6">
                 <div className="relative">
-                  <div className="w-24 h-24 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center border-4 border-white/30 shadow-xl">
-                    <User className="h-12 w-12 text-white" />
-                  </div>
-                  <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-green-500 rounded-full border-4 border-white flex items-center justify-center">
-                    <div className="w-3 h-3 bg-white rounded-full"></div>
+                  <Avatar className="h-24 w-24 border-4 border-white/30 shadow-xl">
+                    <AvatarImage src={(currentUser as any)?.photoURL || ''} />
+                    <AvatarFallback className="text-2xl font-bold bg-white/20 text-white">
+                      {getInitials(currentUser?.displayName || 'U')}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="absolute -bottom-2 -right-2 bg-green-500 rounded-full p-2 border-4 border-white">
+                    <CheckCircle className="h-4 w-4 text-white" />
                   </div>
                 </div>
                 
-                {/* User Info */}
-                <div className="text-white">
-                  <h1 className="text-3xl font-bold mb-2">{currentUser?.displayName || 'ผู้ใช้'}</h1>
-                  <p className="text-blue-100 text-lg mb-1">{currentUser?.email || ''}</p>
-                  <div className="flex items-center space-x-2">
-                    <Badge className="bg-white/20 text-white border-white/30 backdrop-blur-sm">
-                      <Shield className="h-3 w-3 mr-1" />
-                      {getRoleDisplayName(currentUser?.role || '')}
+                <div className="flex-1 text-white">
+                  <div className="flex items-center gap-3 mb-2">
+                    <h1 className="text-3xl font-bold">{currentUser?.displayName || 'ผู้ใช้'}</h1>
+                    <Badge className={`${getRankColor(userStats.rank)} text-white border-0`}>
+                      <Award className="h-3 w-3 mr-1" />
+                      {userStats.rank}
                     </Badge>
-                    <div className="flex items-center space-x-1 text-green-300">
-                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                      <span className="text-sm">ออนไลน์</span>
+                  </div>
+                  <p className="text-white/80 text-lg mb-4">{currentUser?.email}</p>
+                  
+                  <div className="flex flex-wrap gap-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      <span>เข้าร่วม: {new Date().toLocaleDateString('th-TH')}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Activity className="h-4 w-4" />
+                      <span>ระดับ: {userStats.level}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Zap className="h-4 w-4" />
+                      <span>ประสบการณ์: {userStats.experience}%</span>
                     </div>
                   </div>
                 </div>
-              </div>
-              
-              {/* Action Buttons */}
-              <div className="flex gap-3">
-                {!isEditing ? (
+                
+                <div className="flex gap-3">
                   <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={handleEdit}
-                    className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm font-semibold px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                    className="bg-white/20 hover:bg-white/30 text-white border-white/30"
                   >
-                    <Edit3 className="h-5 w-5 mr-2" />
-                    แก้ไขโปรไฟล์
+                    <Edit3 className="h-4 w-4 mr-2" />
+                    แก้ไข
                   </Button>
-                ) : (
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={handleCancel}
-                      className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm font-semibold px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
-                    >
-                      ยกเลิก
-                    </Button>
-                    <Button
-                      onClick={handleSave}
-                      className="bg-green-500 hover:bg-green-600 text-white font-semibold px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-                    >
-                      <CheckCircle className="h-5 w-5 mr-2" />
-                      บันทึก
-                    </Button>
-                  </div>
-                )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSignOut}
+                    className="bg-red-500/20 hover:bg-red-500/30 text-white border-red-300/50"
+                  >
+                    <LogOut className="h-4 w-4 mr-2" />
+                    ออกจากระบบ
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600 mb-1">สถานะบัญชี</p>
-                  <p className="text-2xl font-bold text-green-600">ใช้งานได้</p>
-                </div>
-                <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                  <UserCheck className="h-6 w-6 text-green-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600 mb-1">การยืนยันอีเมล</p>
-                  <p className="text-2xl font-bold text-blue-600">ยืนยันแล้ว</p>
-                </div>
-                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                  <Mail className="h-6 w-6 text-blue-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600 mb-1">ความปลอดภัย</p>
-                  <p className="text-2xl font-bold text-yellow-600">ปานกลาง</p>
-                </div>
-                <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
-                  <Shield className="h-6 w-6 text-yellow-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600 mb-1">บทบาท</p>
-                  <p className="text-2xl font-bold text-purple-600">{getRoleDisplayName(currentUser?.role || '')}</p>
-                </div>
-                <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                  <User className="h-6 w-6 text-purple-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Profile Information */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Basic Information */}
-            <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-2xl hover:shadow-3xl transition-all duration-500 transform hover:-translate-y-1">
-              <CardHeader className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-t-xl">
-                <CardTitle className="flex items-center gap-3 text-xl">
-                  <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                    <User className="h-6 w-6" />
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0 shadow-xl">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-blue-100 text-sm font-medium">การเข้าสู่ระบบ</p>
+                    <p className="text-3xl font-bold">{userStats.totalLogins}</p>
+                    <p className="text-blue-200 text-xs">ครั้งทั้งหมด</p>
                   </div>
-                  ข้อมูลส่วนตัว
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-8 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-3">
-                    <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                      <User className="h-4 w-4" />
-                      ชื่อผู้ใช้
-                    </Label>
-                    {isEditing ? (
-                      <Input
-                        value={editData.displayName}
-                        onChange={(e) => setEditData(prev => ({ ...prev, displayName: e.target.value }))}
-                        className="h-12 px-4 text-lg border-2 border-gray-200 focus:border-blue-500 focus:ring-blue-200 rounded-xl transition-all duration-300 shadow-sm"
-                        placeholder="กรอกชื่อผู้ใช้"
-                      />
-                    ) : (
-                      <div className="text-xl font-semibold text-gray-900 bg-gray-50 px-4 py-3 rounded-xl">
-                        {currentUser?.displayName || ''}
-                      </div>
-                    )}
-                  </div>
-                  <div className="space-y-3">
-                    <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                      <Mail className="h-4 w-4" />
-                      อีเมล
-                    </Label>
-                    {isEditing ? (
-                      <Input
-                        value={editData.email}
-                        onChange={(e) => setEditData(prev => ({ ...prev, email: e.target.value }))}
-                        type="email"
-                        className="h-12 px-4 text-lg border-2 border-gray-200 focus:border-blue-500 focus:ring-blue-200 rounded-xl transition-all duration-300 shadow-sm"
-                        placeholder="กรอกอีเมล"
-                      />
-                    ) : (
-                      <div className="text-xl font-semibold text-gray-900 bg-gray-50 px-4 py-3 rounded-xl">
-                        {currentUser?.email || ''}
-                      </div>
-                    )}
-                  </div>
-                  <div className="space-y-3">
-                    <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                      <Shield className="h-4 w-4" />
-                      บทบาท
-                    </Label>
-                    <div className="flex items-center gap-2">
-                      <Badge className={`px-4 py-2 text-sm font-semibold border-2 ${getRoleColor(currentUser?.role || '')} rounded-xl shadow-sm`}>
-                        <Shield className="h-4 w-4 mr-2" />
-                        {getRoleDisplayName(currentUser?.role || '')}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                      <div className="w-4 h-4 bg-green-500 rounded-full animate-pulse"></div>
-                      สถานะ
-                    </Label>
-                    <div className="flex items-center gap-3">
-                      <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-                      <span className="text-xl font-semibold text-green-600">ออนไลน์</span>
-                    </div>
-                  </div>
+                  <UserCheck className="h-8 w-8 text-blue-200" />
                 </div>
               </CardContent>
             </Card>
 
-            {/* Security Settings */}
-            <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-2xl hover:shadow-3xl transition-all duration-500 transform hover:-translate-y-1">
-              <CardHeader className="bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-t-xl">
-                <CardTitle className="flex items-center gap-3 text-xl">
-                  <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                    <Key className="h-6 w-6" />
+            <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0 shadow-xl">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-green-100 text-sm font-medium">การดำเนินการ</p>
+                    <p className="text-3xl font-bold">{userStats.actionsToday}</p>
+                    <p className="text-green-200 text-xs">วันนี้</p>
                   </div>
-                  ความปลอดภัย
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-8">
-                <div className="bg-gradient-to-r from-gray-50 to-blue-50 p-6 rounded-xl border border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                        <Key className="h-6 w-6 text-blue-600" />
-                      </div>
-                      <div>
-                        <div className="font-semibold text-gray-900 text-lg">รหัสผ่าน</div>
-                        <div className="text-sm text-gray-600">อัปเดตล่าสุด: ไม่ระบุ</div>
-                      </div>
-                    </div>
-                    <Button
-                      onClick={() => setChangePasswordDialogOpen(true)}
-                      className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-semibold px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-                    >
-                      <Key className="h-4 w-4 mr-2" />
-                      เปลี่ยนรหัสผ่าน
-                    </Button>
+                  <Activity className="h-8 w-8 text-green-200" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-0 shadow-xl">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-purple-100 text-sm font-medium">ระยะเวลาเซสชัน</p>
+                    <p className="text-3xl font-bold">{userStats.sessionDuration}</p>
+                    <p className="text-purple-200 text-xs">เฉลี่ย</p>
                   </div>
+                  <Clock className="h-8 w-8 text-purple-200" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-0 shadow-xl">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-orange-100 text-sm font-medium">คะแนนรวม</p>
+                    <p className="text-3xl font-bold">{userStats.totalActions}</p>
+                    <p className="text-orange-200 text-xs">คะแนน</p>
+                  </div>
+                  <TrendingUp className="h-8 w-8 text-orange-200" />
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Quick Actions */}
-            <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-2xl hover:shadow-3xl transition-all duration-500 transform hover:-translate-y-1">
-              <CardHeader className="bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-t-xl">
-                <CardTitle className="flex items-center gap-3 text-xl">
-                  <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                    <Activity className="h-6 w-6" />
-                  </div>
-                  การดำเนินการ
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 space-y-4">
-                <Button
-                  onClick={() => setChangePasswordDialogOpen(true)}
-                  className="w-full justify-start bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-semibold px-6 py-4 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-                >
-                  <Key className="h-5 w-5 mr-3" />
-                  เปลี่ยนรหัสผ่าน
-                </Button>
-                <Button
-                  onClick={signOut}
-                  className="w-full justify-start bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-semibold px-6 py-4 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-                >
-                  <LogOut className="h-5 w-5 mr-3" />
-                  ออกจากระบบ
-                </Button>
-              </CardContent>
-            </Card>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            {/* Profile Information */}
+            <div className="lg:col-span-2 space-y-6">
+              <Card className="shadow-xl border-0">
+                <CardHeader className="bg-gradient-to-r from-slate-50 to-blue-50 border-b">
+                  <CardTitle className="flex items-center gap-3 text-xl">
+                    <User className="h-6 w-6 text-blue-600" />
+                    ข้อมูลส่วนตัว
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6">
+                  {isEditing ? (
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="displayName" className="text-sm font-medium">ชื่อ-นามสกุล</Label>
+                          <Input
+                            id="displayName"
+                            value={editData.displayName}
+                            onChange={(e) => setEditData(prev => ({ ...prev, displayName: e.target.value }))}
+                            className="mt-1"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="email" className="text-sm font-medium">อีเมล</Label>
+                          <Input
+                            id="email"
+                            type="email"
+                            value={editData.email}
+                            onChange={(e) => setEditData(prev => ({ ...prev, email: e.target.value }))}
+                            className="mt-1"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="phone" className="text-sm font-medium">เบอร์โทรศัพท์</Label>
+                          <Input
+                            id="phone"
+                            value={editData.phone}
+                            onChange={(e) => setEditData(prev => ({ ...prev, phone: e.target.value }))}
+                            className="mt-1"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="department" className="text-sm font-medium">แผนก</Label>
+                          <Input
+                            id="department"
+                            value={editData.department}
+                            onChange={(e) => setEditData(prev => ({ ...prev, department: e.target.value }))}
+                            className="mt-1"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="position" className="text-sm font-medium">ตำแหน่ง</Label>
+                          <Input
+                            id="position"
+                            value={editData.position}
+                            onChange={(e) => setEditData(prev => ({ ...prev, position: e.target.value }))}
+                            className="mt-1"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-3 pt-4">
+                        <Button onClick={handleSave} className="bg-green-600 hover:bg-green-700">
+                          <Save className="h-4 w-4 mr-2" />
+                          บันทึก
+                        </Button>
+                        <Button variant="outline" onClick={handleCancel}>
+                          <X className="h-4 w-4 mr-2" />
+                          ยกเลิก
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-3">
+                            <User className="h-5 w-5 text-gray-500" />
+                            <div>
+                              <p className="text-sm text-gray-500">ชื่อ-นามสกุล</p>
+                              <p className="font-medium">{currentUser?.displayName || 'ไม่ระบุ'}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <Mail className="h-5 w-5 text-gray-500" />
+                            <div>
+                              <p className="text-sm text-gray-500">อีเมล</p>
+                              <p className="font-medium">{currentUser?.email}</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-3">
+                            <Smartphone className="h-5 w-5 text-gray-500" />
+                            <div>
+                              <p className="text-sm text-gray-500">เบอร์โทรศัพท์</p>
+                              <p className="font-medium">{editData.phone || 'ไม่ระบุ'}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <Shield className="h-5 w-5 text-gray-500" />
+                            <div>
+                              <p className="text-sm text-gray-500">สถานะ</p>
+                              <Badge className="bg-green-100 text-green-800">
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                ใช้งานได้
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
-            {/* Account Status */}
-            <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-2xl hover:shadow-3xl transition-all duration-500 transform hover:-translate-y-1">
-              <CardHeader className="bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-t-xl">
-                <CardTitle className="flex items-center gap-3 text-xl">
-                  <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                    <UserCheck className="h-6 w-6" />
+              {/* Security Settings */}
+              <Card className="shadow-xl border-0">
+                <CardHeader className="bg-gradient-to-r from-slate-50 to-red-50 border-b">
+                  <CardTitle className="flex items-center gap-3 text-xl">
+                    <Shield className="h-6 w-6 text-red-600" />
+                    ความปลอดภัย
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <Key className="h-5 w-5 text-gray-600" />
+                        <div>
+                          <p className="font-medium">รหัสผ่าน</p>
+                          <p className="text-sm text-gray-500">อัปเดตล่าสุด: 15 ม.ค. 2567</p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setChangePasswordDialogOpen(true)}
+                      >
+                        เปลี่ยนรหัสผ่าน
+                      </Button>
+                    </div>
+                    
+                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <Monitor className="h-5 w-5 text-gray-600" />
+                        <div>
+                          <p className="font-medium">การเข้าสู่ระบบ 2 ขั้นตอน</p>
+                          <p className="text-sm text-gray-500">เพิ่มความปลอดภัยให้กับบัญชี</p>
+                        </div>
+                      </div>
+                      <Switch />
+                    </div>
                   </div>
-                  สถานะบัญชี
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 space-y-4">
-                <div className="flex items-center justify-between p-4 bg-green-50 rounded-xl border border-green-200">
-                  <span className="text-sm font-semibold text-gray-700">สถานะ</span>
-                  <Badge className="bg-green-500 text-white border-0 px-3 py-1 rounded-lg">
-                    <CheckCircle className="h-4 w-4 mr-1" />
-                    ใช้งานได้
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-blue-50 rounded-xl border border-blue-200">
-                  <span className="text-sm font-semibold text-gray-700">การยืนยันอีเมล</span>
-                  <Badge className="bg-blue-500 text-white border-0 px-3 py-1 rounded-lg">
-                    <CheckCircle className="h-4 w-4 mr-1" />
-                    ยืนยันแล้ว
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-yellow-50 rounded-xl border border-yellow-200">
-                  <span className="text-sm font-semibold text-gray-700">2FA</span>
-                  <Badge className="bg-yellow-500 text-white border-0 px-3 py-1 rounded-lg">
-                    <AlertTriangle className="h-4 w-4 mr-1" />
-                    ไม่เปิดใช้
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Sidebar */}
+            <div className="space-y-6">
+              
+              {/* Notifications */}
+              <Card className="shadow-xl border-0">
+                <CardHeader className="bg-gradient-to-r from-slate-50 to-yellow-50 border-b">
+                  <CardTitle className="flex items-center gap-3 text-lg">
+                    <Bell className="h-5 w-5 text-yellow-600" />
+                    การแจ้งเตือน
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4">
+                  <div className="space-y-4">
+                    {Object.entries(notifications).map(([key, value]) => (
+                      <div key={key} className="flex items-center justify-between">
+                        <span className="text-sm font-medium capitalize">
+                          {key === 'email' ? 'อีเมล' :
+                           key === 'push' ? 'Push Notification' :
+                           key === 'sms' ? 'SMS' :
+                           key === 'weekly' ? 'รายสัปดาห์' :
+                           key === 'monthly' ? 'รายเดือน' :
+                           key === 'security' ? 'ความปลอดภัย' :
+                           key === 'updates' ? 'อัปเดต' : key}
+                        </span>
+                        <Switch
+                          checked={value}
+                          onCheckedChange={(checked) => handleNotificationChange(key, checked)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Preferences */}
+              <Card className="shadow-xl border-0">
+                <CardHeader className="bg-gradient-to-r from-slate-50 to-green-50 border-b">
+                  <CardTitle className="flex items-center gap-3 text-lg">
+                    <Settings className="h-5 w-5 text-green-600" />
+                    การตั้งค่า
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">ธีม</span>
+                      <Badge variant="outline">{preferences.theme === 'light' ? 'สว่าง' : 'มืด'}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">ภาษา</span>
+                      <Badge variant="outline">ไทย</Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">เขตเวลา</span>
+                      <Badge variant="outline">GMT+7</Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">รูปแบบวันที่</span>
+                      <Badge variant="outline">DD/MM/YYYY</Badge>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Activity Summary */}
+              <Card className="shadow-xl border-0">
+                <CardHeader className="bg-gradient-to-r from-slate-50 to-purple-50 border-b">
+                  <CardTitle className="flex items-center gap-3 text-lg">
+                    <BarChart3 className="h-5 w-5 text-purple-600" />
+                    สรุปกิจกรรม
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">เข้าสู่ระบบครั้งล่าสุด</span>
+                      <span className="text-sm font-medium">{new Date(userStats.lastLogin).toLocaleDateString('th-TH')}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">การดำเนินการวันนี้</span>
+                      <span className="text-sm font-medium">{userStats.actionsToday} ครั้ง</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">คะแนนรวม</span>
+                      <span className="text-sm font-medium">{userStats.totalActions}</span>
+                    </div>
+                    <Separator />
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">ระดับ</span>
+                      <div className="flex items-center gap-2">
+                        <Star className="h-4 w-4 text-yellow-500" />
+                        <span className="text-sm font-medium">Level {userStats.level}</span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
       </div>

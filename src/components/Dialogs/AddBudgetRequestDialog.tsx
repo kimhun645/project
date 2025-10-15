@@ -106,8 +106,8 @@ export function AddBudgetRequestDialog({ onSuccess, editRequest }: AddBudgetRequ
   const loadRequesters = async () => {
     try {
       setIsLoadingRequesters(true);
-      const { firestoreService } = await import('@/lib/firestoreService');
-      const data = await firestoreService.getRequesters();
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      const data = await FirestoreService.getRequesters();
       // Ensure data is always an array
       setRequesters(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -122,9 +122,9 @@ export function AddBudgetRequestDialog({ onSuccess, editRequest }: AddBudgetRequ
   const loadApprovers = async () => {
     try {
       setIsLoadingApprovers(true);
-      const { firestoreService } = await import('@/lib/firestoreService');
+      const { FirestoreService } = await import('@/lib/firestoreService');
       // ใช้ getUsers แทน getApprovers เพื่อดึงข้อมูลจาก collection users
-      const usersData = await firestoreService.getUsers();
+      const usersData = await FirestoreService.getUsers();
       // กรองเฉพาะผู้ที่มีบทบาท manager เท่านั้น (ผู้จัดการศูนย์)
       const managerUsers = usersData?.filter(user => 
         user.role === 'manager'
@@ -185,8 +185,8 @@ export function AddBudgetRequestDialog({ onSuccess, editRequest }: AddBudgetRequ
   const loadProducts = async () => {
     try {
       setIsLoadingProducts(true);
-      const { firestoreService } = await import('@/lib/firestoreService');
-      const data = await firestoreService.getProducts();
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      const data = await FirestoreService.getProducts();
       setProducts(data || []);
     } catch (error) {
       console.error('Error loading products:', error);
@@ -200,8 +200,8 @@ export function AddBudgetRequestDialog({ onSuccess, editRequest }: AddBudgetRequ
   const fetchAccountCodes = async () => {
     try {
       setIsLoadingAccountCodes(true);
-      const { firestoreService } = await import('@/lib/firestoreService');
-      const data = await firestoreService.getAccountCodes();
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      const data = await FirestoreService.getAccountCodes();
       
       // กรองเฉพาะ account codes ที่มี code (ไม่ใช่ header) และไม่ซ้ำ
       const uniqueAccountCodes = data?.filter((account, index, self) => 
@@ -499,8 +499,8 @@ ${requestData.note ? `หมายเหตุ: ${requestData.note}` : ''}
       };
 
       // สร้างคำขอใช้งบประมาณ
-      const { firestoreService } = await import('@/lib/firestoreService');
-      const newRequest = await firestoreService.createBudgetRequest(requestData);
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      const newRequest = await FirestoreService.createBudgetRequest(requestData);
       
       // ส่งอีเมลไปยังผู้อนุมัติ
       await sendApprovalEmail(newRequest, formData.approver_name, formData.approver_email, formData.cc_emails);

@@ -135,7 +135,7 @@ export function RecentActivities({ activities }: RecentActivitiesProps) {
           <div className="text-center py-8 text-gray-500">
             <Package className="h-12 w-12 mx-auto mb-4 text-gray-300" />
             <p>ยังไม่มีกิจกรรมล่าสุด</p>
-            <p className="text-sm">การเคลื่อนไหวสต็อกจะแสดงที่นี่</p>
+            <p className="text-sm">การเบิก/การรับพัสดุจะแสดงที่นี่</p>
           </div>
         )}
         

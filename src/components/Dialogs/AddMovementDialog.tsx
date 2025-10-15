@@ -33,7 +33,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { firestoreService } from '@/lib/firestoreService';
+import { FirestoreService } from '@/lib/firestoreService';
 import { useBarcodeScanner } from '@/hooks/use-barcode-scanner';
 
 interface ProductForMovement {
@@ -125,7 +125,7 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
 
   const fetchProducts = async () => {
     try {
-      const data = await firestoreService.getProducts();
+      const data = await FirestoreService.getProducts();
       setProducts(data || []);
     } catch (error) {
       console.error('Error fetching products:', error);
@@ -177,7 +177,7 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
       console.log('🔄 Starting movement creation:', formData);
       
       // Get current product stock
-      const product = await firestoreService.getProductById(formData.product_id);
+      const product = await FirestoreService.getProduct(formData.product_id);
       if (!product) throw new Error('ไม่พบสินค้า');
       
       console.log('📦 Product found:', product);
@@ -206,7 +206,7 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
       };
       
       console.log('📝 Creating movement with data:', movementData);
-      await firestoreService.createMovement(movementData);
+      await FirestoreService.createMovement(movementData);
       console.log('✅ Movement created successfully');
 
       // Update product stock
@@ -221,7 +221,7 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
         newStock: newStock
       });
 
-      await firestoreService.updateProduct(formData.product_id, {
+      await FirestoreService.updateProduct(formData.product_id, {
         current_stock: newStock
       });
       console.log('✅ Stock updated successfully');
@@ -304,7 +304,7 @@ export function AddMovementDialog({ onMovementAdded }: AddMovementDialogProps) {
               </div>
               <div>
                 <DialogTitle className="text-xl font-bold text-slate-800 tracking-tight">
-                  บันทึกการเคลื่อนไหวสต็อก
+                  บันทึกการเบิก/การรับพัสดุ
                 </DialogTitle>
                 <DialogDescription className="text-sm text-slate-600 font-medium mt-1">
                   บันทึกการรับเข้าหรือเบิกออกสินค้าในระบบ

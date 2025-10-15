@@ -17,7 +17,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Plus, Loader2, CalendarIcon, X, Package, Tag, Building2, MapPin, DollarSign, BarChart3, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { firestoreService, FirestoreService } from '@/lib/firestoreService';
+import { FirestoreService } from '@/lib/firestoreService';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 

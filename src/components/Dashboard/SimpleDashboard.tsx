@@ -34,11 +34,11 @@ export function SimpleDashboard() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
+      const { FirestoreService } = await import('@/lib/firestoreService');
 
       const [products, movements] = await Promise.all([
-        firestoreService.getProducts(),
-        firestoreService.getMovements()
+        FirestoreService.getProducts(),
+        FirestoreService.getMovements()
       ]);
 
       const lowStockItems = products.filter(p => p.currentStock <= p.minStock).length;
@@ -189,7 +189,7 @@ export function SimpleDashboard() {
                 <div className="flex items-center space-x-3">
                   <ShoppingCart className="h-5 w-5 text-green-600" />
                   <div>
-                    <p className="font-semibold text-green-800">การเคลื่อนไหวสต็อก</p>
+                    <p className="font-semibold text-green-800">การเบิก/การรับพัสดุ</p>
                     <p className="text-sm text-green-600">{stats.recentMovements} รายการวันนี้</p>
                   </div>
                 </div>

@@ -80,8 +80,8 @@ export function UserManagement() {
     setIsLoading(true);
     try {
       // Load from Firestore collection 'users'
-      const { firestoreService } = await import('@/lib/firestoreService');
-      const users = await firestoreService.getUsers();
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      const users = await FirestoreService.getUsers();
       setUsers(users);
     } catch (error) {
       console.error('Error loading users:', error);
@@ -105,7 +105,7 @@ export function UserManagement() {
         passwordHash: 'placeholder' // Placeholder, actual password handling would be more complex
       };
       
-      await firestoreService.addUser(newUser);
+      await FirestoreService.addUser(newUser);
       await loadUsers(); // Reload data
       setIsAddDialogOpen(false);
       resetForm();
@@ -128,12 +128,12 @@ export function UserManagement() {
     if (!selectedUser) return;
     
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
+      const { FirestoreService } = await import('@/lib/firestoreService');
       const updatedUser: Partial<User> = {
         ...formData
       };
       
-      await firestoreService.updateUser(selectedUser.id, updatedUser);
+      await FirestoreService.updateUser(selectedUser.id, updatedUser);
       await loadUsers(); // Reload data
       setIsEditDialogOpen(false);
       setSelectedUser(null);
@@ -155,8 +155,8 @@ export function UserManagement() {
 
   const handleDeleteUser = async (userId: string) => {
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
-      await firestoreService.deleteUser(userId);
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      await FirestoreService.deleteUser(userId);
       await loadUsers(); // Reload data
       
       toast({
@@ -175,11 +175,11 @@ export function UserManagement() {
 
   const handleToggleStatus = async (userId: string) => {
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
+      const { FirestoreService } = await import('@/lib/firestoreService');
       const user = users.find(u => u.id === userId);
       if (!user) return;
       
-      await firestoreService.updateUser(userId, {
+      await FirestoreService.updateUser(userId, {
         isActive: !user.isActive
       });
       

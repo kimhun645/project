@@ -1,9 +1,18 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react-swc'
 import path from 'path'
+import { visualizer } from 'rollup-plugin-visualizer'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    visualizer({
+      filename: 'dist/stats.html',
+      open: true,
+      gzipSize: true,
+      brotliSize: true,
+    })
+  ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -17,11 +26,19 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: process.env.NODE_ENV === 'development',
-    // Single bundle configuration
+    // Optimized bundle configuration
     rollupOptions: {
       output: {
-        // Single bundle - no manual chunks
-        manualChunks: undefined,
+        // Manual chunks for better caching
+        manualChunks: {
+          // Vendor chunks
+          'react-vendor': ['react', 'react-dom'],
+          'firebase-vendor': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+          'ui-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-select'],
+          'chart-vendor': ['recharts'],
+          'form-vendor': ['react-hook-form', '@hookform/resolvers', 'zod'],
+          'utils-vendor': ['date-fns', 'clsx', 'tailwind-merge'],
+        },
         // Generate single file names
         chunkFileNames: 'js/[name]-[hash].js',
         entryFileNames: 'js/[name]-[hash].js',

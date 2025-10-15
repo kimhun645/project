@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { Layout } from '@/components/Layout/Layout';
 import { api, type Product, type Movement, type Category, type Supplier } from '@/lib/apiService';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, Legend } from 'recharts';
 
 interface DashboardStats {
   totalProducts: number;
@@ -64,9 +64,13 @@ export default function Dashboard() {
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
+  const [receipts, setReceipts] = useState<any[]>([]);
+  const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [selectedTimeRange, setSelectedTimeRange] = useState<'7d' | '30d' | '90d' | '1y'>('30d');
+  const [chartType, setChartType] = useState<'bar' | 'line' | 'area'>('bar');
+  const [hoveredData, setHoveredData] = useState<any>(null);
 
   // Calculate growth rate based on actual data
   const calculateGrowthRate = (movements: Movement[], days: number): number => {
@@ -167,7 +171,7 @@ export default function Dashboard() {
     ];
   }, [products, movements, stats]);
 
-  // Chart data for movements
+  // Chart data for movements (รวม receipts และ withdrawals)
   const movementChartData = useMemo(() => {
     const days = selectedTimeRange === '7d' ? 7 : selectedTimeRange === '30d' ? 30 : selectedTimeRange === '90d' ? 90 : 365;
     const data = [];
@@ -175,21 +179,54 @@ export default function Dashboard() {
     for (let i = days - 1; i >= 0; i--) {
       const date = new Date();
       date.setDate(date.getDate() - i);
+      
+      // ตั้งเวลาให้เป็น 00:00:00 และ 23:59:59 สำหรับการเปรียบเทียบ
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      // ข้อมูลจาก movements
       const dayMovements = movements.filter(m => {
         const movementDate = new Date(m.created_at);
-        return movementDate.toDateString() === date.toDateString();
+        return movementDate >= startOfDay && movementDate <= endOfDay;
       });
+      
+      // ข้อมูลจาก receipts
+      const dayReceipts = receipts.filter(r => {
+        const receiptDate = new Date(r.created_at);
+        return receiptDate >= startOfDay && receiptDate <= endOfDay;
+      });
+      
+      // ข้อมูลจาก withdrawals
+      const dayWithdrawals = withdrawals.filter(w => {
+        const withdrawalDate = new Date(w.created_at);
+        return withdrawalDate >= startOfDay && withdrawalDate <= endOfDay;
+      });
+      
+      // คำนวณจำนวนรับเข้า (in)
+      const movementsIn = dayMovements.filter(m => m.type === 'in').reduce((sum, m) => sum + (m.quantity || 0), 0);
+      const receiptsIn = dayReceipts.reduce((sum, r) => {
+        return sum + (r.items?.reduce((itemSum: number, item: any) => itemSum + (item.quantity || 0), 0) || 0);
+      }, 0);
+      
+      // คำนวณจำนวนเบิกออก (out)
+      const movementsOut = dayMovements.filter(m => m.type === 'out').reduce((sum, m) => sum + (m.quantity || 0), 0);
+      const withdrawalsOut = dayWithdrawals.reduce((sum, w) => {
+        return sum + (w.items?.reduce((itemSum: number, item: any) => itemSum + (item.quantity || 0), 0) || 0);
+      }, 0);
+      
       
       data.push({
         date: date.toLocaleDateString('th-TH', { month: 'short', day: 'numeric' }),
-        in: dayMovements.filter(m => m.type === 'in').reduce((sum, m) => sum + (m.quantity || 0), 0),
-        out: dayMovements.filter(m => m.type === 'out').reduce((sum, m) => sum + (m.quantity || 0), 0),
-        total: dayMovements.length
+        in: movementsIn + receiptsIn,
+        out: movementsOut + withdrawalsOut,
+        total: dayMovements.length + dayReceipts.length + dayWithdrawals.length
       });
     }
     
     return data;
-  }, [movements, selectedTimeRange]);
+  }, [movements, receipts, withdrawals, selectedTimeRange]);
 
   const getRandomColor = (): string => {
     const colors = [
@@ -273,24 +310,29 @@ export default function Dashboard() {
 
       const { FirestoreService } = await import('@/lib/firestoreService');
 
-      const [productsData, movementsData, categoriesData, suppliersData] = await Promise.all([
+      const [productsData, movementsData, receiptsData, withdrawalsData, categoriesData, suppliersData] = await Promise.all([
         FirestoreService.getProducts(),
         FirestoreService.getMovements(),
+        FirestoreService.getReceipts(),
+        FirestoreService.getWithdrawals(),
         FirestoreService.getCategories(),
         FirestoreService.getSuppliers()
       ]);
 
       setProducts(productsData || []);
       setMovements(movementsData || []);
+      setReceipts(receiptsData || []);
+      setWithdrawals(withdrawalsData || []);
       setCategories(categoriesData || []);
       setSuppliers(suppliersData || []);
+
 
       // Generate realistic recent activities
       const activities: RecentActivity[] = [
         {
           id: '1',
           type: 'movement',
-          title: 'การเคลื่อนไหวสต็อก',
+          title: 'การเบิก/การรับพัสดุ',
           description: `มี ${movementsData?.length || 0} การเคลื่อนไหวในวันนี้`,
           time: 'เมื่อสักครู่',
           status: 'info',
@@ -589,80 +631,302 @@ export default function Dashboard() {
             {/* Movement Chart */}
             <Card className="lg:col-span-2 border-0 rounded-3xl shadow-xl bg-gradient-to-br from-purple-50 to-violet-50">
               <CardHeader className="pb-6">
-                <div className="flex justify-between items-center">
+                <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center space-y-4 lg:space-y-0">
                   <CardTitle className="text-xl font-bold text-gray-900 flex items-center">
                     <div className="p-3 bg-gradient-to-br from-purple-500 to-violet-600 rounded-2xl mr-4 shadow-lg">
                       <BarChart3 className="h-6 w-6 text-white" />
                     </div>
-                    กราฟการเคลื่อนไหวสต็อก
+                    กราฟการเบิก/การรับพัสดุ
                   </CardTitle>
-                  <div className="flex space-x-3">
-                    {(['7d', '30d', '90d', '1y'] as const).map((range) => (
-                      <Button 
-                        key={range}
-                        size="sm" 
-                        variant={selectedTimeRange === range ? "default" : "outline"}
-                        onClick={() => setSelectedTimeRange(range)}
-                        className={`px-4 py-2 text-sm rounded-2xl font-semibold transition-all duration-300 ${
-                          selectedTimeRange === range 
-                            ? 'bg-gradient-to-r from-purple-600 to-violet-600 text-white shadow-lg' 
-                            : 'bg-white/60 backdrop-blur-sm border-purple-200 text-purple-700 hover:bg-purple-100 hover:border-purple-300'
-                        }`}
-                      >
-                        {range === '7d' ? '7 วัน' : range === '30d' ? '30 วัน' : range === '90d' ? '90 วัน' : '1 ปี'}
-                      </Button>
-                    ))}
+                  
+                  <div className="flex flex-col lg:flex-row space-y-3 lg:space-y-0 lg:space-x-3">
+                    {/* Chart Type Selector */}
+                    <div className="flex space-x-2">
+                      {(['bar', 'line', 'area'] as const).map((type) => (
+                        <Button 
+                          key={type}
+                          size="sm" 
+                          variant={chartType === type ? "default" : "outline"}
+                          onClick={() => setChartType(type)}
+                          className={`px-3 py-2 text-xs rounded-xl font-semibold transition-all duration-300 ${
+                            chartType === type 
+                              ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg' 
+                              : 'bg-white/60 backdrop-blur-sm border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300'
+                          }`}
+                        >
+                          {type === 'bar' ? '📊' : type === 'line' ? '📈' : '📉'}
+                        </Button>
+                      ))}
+                    </div>
+                    
+                    {/* Time Range Selector */}
+                    <div className="flex space-x-2">
+                      {(['7d', '30d', '90d', '1y'] as const).map((range) => (
+                        <Button 
+                          key={range}
+                          size="sm" 
+                          variant={selectedTimeRange === range ? "default" : "outline"}
+                          onClick={() => setSelectedTimeRange(range)}
+                          className={`px-3 py-2 text-xs rounded-xl font-semibold transition-all duration-300 ${
+                            selectedTimeRange === range 
+                              ? 'bg-gradient-to-r from-purple-600 to-violet-600 text-white shadow-lg' 
+                              : 'bg-white/60 backdrop-blur-sm border-purple-200 text-purple-700 hover:bg-purple-100 hover:border-purple-300'
+                          }`}
+                        >
+                          {range === '7d' ? '7 วัน' : range === '30d' ? '30 วัน' : range === '90d' ? '90 วัน' : '1 ปี'}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </CardHeader>
               <CardContent>
+                {/* Chart Summary Cards */}
+                {hoveredData && (
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div className="bg-gradient-to-r from-emerald-50 to-green-50 rounded-2xl p-4 border border-emerald-200">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-emerald-700">รับเข้า</p>
+                          <p className="text-2xl font-bold text-emerald-900">{hoveredData.in || 0} ชิ้น</p>
+                        </div>
+                        <div className="p-3 bg-gradient-to-br from-emerald-500 to-green-600 rounded-xl">
+                          <TrendingUp className="h-5 w-5 text-white" />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-gradient-to-r from-red-50 to-rose-50 rounded-2xl p-4 border border-red-200">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-red-700">เบิกออก</p>
+                          <p className="text-2xl font-bold text-red-900">{hoveredData.out || 0} ชิ้น</p>
+                        </div>
+                        <div className="p-3 bg-gradient-to-br from-red-500 to-rose-600 rounded-xl">
+                          <TrendingDown className="h-5 w-5 text-white" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="h-80 bg-white/40 backdrop-blur-sm rounded-2xl p-4 border border-white/30 shadow-lg">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={movementChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" strokeOpacity={0.5} />
-                      <XAxis dataKey="date" stroke="#6b7280" fontSize={12} />
-                      <YAxis stroke="#6b7280" fontSize={12} />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: 'rgba(255, 255, 255, 0.95)', 
-                          border: '1px solid rgba(139, 92, 246, 0.2)', 
-                          borderRadius: '12px',
-                          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-                          backdropFilter: 'blur(10px)'
-                        }} 
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="in" 
-                        stackId="1" 
-                        stroke="#10b981" 
-                        fill="url(#colorIn)" 
-                        fillOpacity={0.8}
-                        name="รับเข้า"
-                        strokeWidth={2}
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="out" 
-                        stackId="1" 
-                        stroke="#ef4444" 
-                        fill="url(#colorOut)" 
-                        fillOpacity={0.8}
-                        name="เบิกออก"
-                        strokeWidth={2}
-                      />
-                      <defs>
-                        <linearGradient id="colorIn" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="#10b981" stopOpacity={0.1}/>
-                        </linearGradient>
-                        <linearGradient id="colorOut" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="#ef4444" stopOpacity={0.1}/>
-                        </linearGradient>
-                      </defs>
-                    </AreaChart>
+                    {chartType === 'bar' ? (
+                      <BarChart 
+                        data={movementChartData} 
+                        margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                        onMouseEnter={(data) => setHoveredData(data)}
+                        onMouseLeave={() => setHoveredData(null)}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" strokeOpacity={0.5} />
+                        <XAxis 
+                          dataKey="date" 
+                          stroke="#6b7280" 
+                          fontSize={12}
+                          tick={{ fill: '#6b7280' }}
+                          axisLine={{ stroke: '#d1d5db' }}
+                        />
+                        <YAxis 
+                          stroke="#6b7280" 
+                          fontSize={12}
+                          tick={{ fill: '#6b7280' }}
+                          axisLine={{ stroke: '#d1d5db' }}
+                        />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: 'rgba(255, 255, 255, 0.98)', 
+                            border: '1px solid rgba(139, 92, 246, 0.3)', 
+                            borderRadius: '16px',
+                            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                            backdropFilter: 'blur(20px)',
+                            padding: '16px',
+                            fontSize: '14px'
+                          }}
+                          labelStyle={{ 
+                            color: '#374151', 
+                            fontWeight: '600',
+                            marginBottom: '8px'
+                          }}
+                          formatter={(value: any, name: string) => [
+                            `${value} ชิ้น`, 
+                            name === 'in' ? 'รับเข้า' : 'เบิกออก'
+                          ]}
+                        />
+                        <Bar 
+                          dataKey="in" 
+                          name="รับเข้า"
+                          fill="url(#colorIn)"
+                          radius={[4, 4, 0, 0]}
+                          stroke="#10b981"
+                          strokeWidth={1}
+                        />
+                        <Bar 
+                          dataKey="out" 
+                          name="เบิกออก"
+                          fill="url(#colorOut)"
+                          radius={[4, 4, 0, 0]}
+                          stroke="#ef4444"
+                          strokeWidth={1}
+                        />
+                        <defs>
+                          <linearGradient id="colorIn" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#10b981" stopOpacity={0.9}/>
+                            <stop offset="50%" stopColor="#34d399" stopOpacity={0.8}/>
+                            <stop offset="100%" stopColor="#6ee7b7" stopOpacity={0.7}/>
+                          </linearGradient>
+                          <linearGradient id="colorOut" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#ef4444" stopOpacity={0.9}/>
+                            <stop offset="50%" stopColor="#f87171" stopOpacity={0.8}/>
+                            <stop offset="100%" stopColor="#fca5a5" stopOpacity={0.7}/>
+                          </linearGradient>
+                        </defs>
+                      </BarChart>
+                    ) : chartType === 'line' ? (
+                      <LineChart 
+                        data={movementChartData} 
+                        margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                        onMouseEnter={(data) => setHoveredData(data)}
+                        onMouseLeave={() => setHoveredData(null)}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" strokeOpacity={0.5} />
+                        <XAxis 
+                          dataKey="date" 
+                          stroke="#6b7280" 
+                          fontSize={12}
+                          tick={{ fill: '#6b7280' }}
+                          axisLine={{ stroke: '#d1d5db' }}
+                        />
+                        <YAxis 
+                          stroke="#6b7280" 
+                          fontSize={12}
+                          tick={{ fill: '#6b7280' }}
+                          axisLine={{ stroke: '#d1d5db' }}
+                        />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: 'rgba(255, 255, 255, 0.98)', 
+                            border: '1px solid rgba(139, 92, 246, 0.3)', 
+                            borderRadius: '16px',
+                            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                            backdropFilter: 'blur(20px)',
+                            padding: '16px',
+                            fontSize: '14px'
+                          }}
+                          labelStyle={{ 
+                            color: '#374151', 
+                            fontWeight: '600',
+                            marginBottom: '8px'
+                          }}
+                          formatter={(value: any, name: string) => [
+                            `${value} ชิ้น`, 
+                            name === 'in' ? 'รับเข้า' : 'เบิกออก'
+                          ]}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="in" 
+                          stroke="#10b981" 
+                          strokeWidth={3}
+                          dot={{ fill: '#10b981', strokeWidth: 2, r: 4 }}
+                          activeDot={{ r: 6, stroke: '#10b981', strokeWidth: 2 }}
+                          name="รับเข้า"
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="out" 
+                          stroke="#ef4444" 
+                          strokeWidth={3}
+                          dot={{ fill: '#ef4444', strokeWidth: 2, r: 4 }}
+                          activeDot={{ r: 6, stroke: '#ef4444', strokeWidth: 2 }}
+                          name="เบิกออก"
+                        />
+                      </LineChart>
+                    ) : (
+                      <AreaChart 
+                        data={movementChartData} 
+                        margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                        onMouseEnter={(data) => setHoveredData(data)}
+                        onMouseLeave={() => setHoveredData(null)}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" strokeOpacity={0.5} />
+                        <XAxis 
+                          dataKey="date" 
+                          stroke="#6b7280" 
+                          fontSize={12}
+                          tick={{ fill: '#6b7280' }}
+                          axisLine={{ stroke: '#d1d5db' }}
+                        />
+                        <YAxis 
+                          stroke="#6b7280" 
+                          fontSize={12}
+                          tick={{ fill: '#6b7280' }}
+                          axisLine={{ stroke: '#d1d5db' }}
+                        />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: 'rgba(255, 255, 255, 0.98)', 
+                            border: '1px solid rgba(139, 92, 246, 0.3)', 
+                            borderRadius: '16px',
+                            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                            backdropFilter: 'blur(20px)',
+                            padding: '16px',
+                            fontSize: '14px'
+                          }}
+                          labelStyle={{ 
+                            color: '#374151', 
+                            fontWeight: '600',
+                            marginBottom: '8px'
+                          }}
+                          formatter={(value: any, name: string) => [
+                            `${value} ชิ้น`, 
+                            name === 'in' ? 'รับเข้า' : 'เบิกออก'
+                          ]}
+                        />
+                        <Area 
+                          type="monotone" 
+                          dataKey="in" 
+                          stackId="1" 
+                          stroke="#10b981" 
+                          fill="url(#colorIn)" 
+                          fillOpacity={0.8}
+                          name="รับเข้า"
+                          strokeWidth={2}
+                        />
+                        <Area 
+                          type="monotone" 
+                          dataKey="out" 
+                          stackId="1" 
+                          stroke="#ef4444" 
+                          fill="url(#colorOut)" 
+                          fillOpacity={0.8}
+                          name="เบิกออก"
+                          strokeWidth={2}
+                        />
+                        <defs>
+                          <linearGradient id="colorIn" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0.1}/>
+                          </linearGradient>
+                          <linearGradient id="colorOut" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="#ef4444" stopOpacity={0.1}/>
+                          </linearGradient>
+                        </defs>
+                      </AreaChart>
+                    )}
                   </ResponsiveContainer>
+                </div>
+                
+                {/* Chart Legend */}
+                <div className="flex justify-center space-x-8 mt-6">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-4 h-4 bg-gradient-to-r from-emerald-500 to-green-400 rounded-full shadow-lg"></div>
+                    <span className="text-sm font-semibold text-gray-700">รับเข้า</span>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <div className="w-4 h-4 bg-gradient-to-r from-red-500 to-rose-400 rounded-full shadow-lg"></div>
+                    <span className="text-sm font-semibold text-gray-700">เบิกออก</span>
+                  </div>
                 </div>
               </CardContent>
             </Card>

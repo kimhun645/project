@@ -85,8 +85,8 @@ export function AddCategoryDialog({ onCategoryAdded }: AddCategoryDialogProps) {
     setIsLoading(true);
 
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
-      await firestoreService.createCategory({
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      await FirestoreService.createCategory({
         name: formData.name.trim(),
         description: formData.description.trim(),
         is_medicine: formData.is_medicine

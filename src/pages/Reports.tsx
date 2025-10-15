@@ -534,8 +534,8 @@ export default function Reports() {
           break;
           
         case 'movements':
-          fileName = `รายงานการเคลื่อนไหวสต็อก_${new Date().toISOString().split('T')[0]}.csv`;
-          reportTitle = 'รายงานการเคลื่อนไหวสต็อก';
+          fileName = `รายงานการเบิก/การรับพัสดุ_${new Date().toISOString().split('T')[0]}.csv`;
+          reportTitle = 'รายงานการเบิก/การรับพัสดุ';
           reportData = detailedMovementData.map(item => ({
             'วันที่': item.date,
             'SKU': item.productSku,
@@ -815,7 +815,7 @@ export default function Reports() {
           {reportType === 'movements' && (
             <Card className="bg-gradient-card shadow-card">
               <CardHeader>
-                <CardTitle className="text-lg sm:text-xl">การเคลื่อนไหวสต็อกตามช่วงเวลา</CardTitle>
+                <CardTitle className="text-lg sm:text-xl">การเบิก/การรับพัสดุตามช่วงเวลา</CardTitle>
               </CardHeader>
               <CardContent>
                 {stockMovementData.some(item => item.stockIn > 0 || item.stockOut > 0) ? (
@@ -850,7 +850,7 @@ export default function Reports() {
                   <div className="text-center py-8">
                     <BarChart3 className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
                     <h3 className="text-lg font-semibold mb-2">ไม่มีข้อมูลการเคลื่อนไหว</h3>
-                    <p className="text-muted-foreground">ยังไม่มีการเคลื่อนไหวสต็อกในช่วงเวลาที่เลือก</p>
+                    <p className="text-muted-foreground">ยังไม่มีการเบิก/การรับพัสดุในช่วงเวลาที่เลือก</p>
                   </div>
                 )}
               </CardContent>
@@ -895,7 +895,7 @@ export default function Reports() {
                   <div className="text-center py-8">
                     <BarChart3 className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
                     <h3 className="text-lg font-semibold mb-2">ไม่มีข้อมูลการขาย</h3>
-                    <p className="text-muted-foreground">ยังไม่มีการเคลื่อนไหวสต็อกใน 7 วันที่ผ่านมา</p>
+                    <p className="text-muted-foreground">ยังไม่มีการเบิก/การรับพัสดุใน 7 วันที่ผ่านมา</p>
             </div>
                 )}
           </CardContent>

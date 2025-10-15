@@ -174,20 +174,20 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
       // Load products
-      const { firestoreService } = await import('@/lib/firestoreService');
-      const products = await firestoreService.getProducts();
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      const products = await FirestoreService.getProducts();
       dispatch({ type: 'SET_PRODUCTS', payload: products });
 
       // Load categories
-      const categories = await firestoreService.getCategories();
+      const categories = await FirestoreService.getCategories();
       dispatch({ type: 'SET_CATEGORIES', payload: categories });
 
       // Load suppliers
-      const suppliers = await firestoreService.getSuppliers();
+      const suppliers = await FirestoreService.getSuppliers();
       dispatch({ type: 'SET_SUPPLIERS', payload: suppliers });
 
       // Load movements
-      const movements = await firestoreService.getMovements();
+      const movements = await FirestoreService.getMovements();
       dispatch({ type: 'SET_MOVEMENTS', payload: movements });
 
     } catch (error) {

@@ -10,10 +10,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { CalendarIcon, Edit3, Save, Loader2, Package, Building2, Tag, DollarSign, BarChart3, MapPin, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
-import { api as apiService } from '@/lib/apiService';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { firestoreService, FirestoreService } from '@/lib/firestoreService';
+import { FirestoreService } from '@/lib/firestoreService';
 
 interface Product {
   id: string;
@@ -187,6 +186,32 @@ export function EditProductDialog({
       }
 
       console.log('🔄 Updating product:', product.id, updateData);
+      
+      // Debug: Check for undefined values in updateData
+      const checkForUndefined = (obj: any, path = ''): string[] => {
+        const undefinedFields: string[] = [];
+        for (const key in obj) {
+          const currentPath = path ? `${path}.${key}` : key;
+          if (obj[key] === undefined) {
+            undefinedFields.push(currentPath);
+          } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+            undefinedFields.push(...checkForUndefined(obj[key], currentPath));
+          }
+        }
+        return undefinedFields;
+      };
+      
+      const undefinedFields = checkForUndefined(updateData);
+      if (undefinedFields.length > 0) {
+        console.error('❌ Found undefined fields in updateData:', undefinedFields);
+        toast({
+          title: "ข้อมูลไม่ครบถ้วน",
+          description: `พบข้อมูลที่ไม่ถูกต้อง: ${undefinedFields.join(', ')}`,
+          variant: "destructive",
+        });
+        return;
+      }
+      
       await FirestoreService.updateProduct(product.id, updateData);
       
       toast({
@@ -194,8 +219,20 @@ export function EditProductDialog({
         description: "แก้ไขสินค้าสำเร็จ",
         variant: "default",
       });
-      onSuccess();
-      onOpenChange(false);
+      
+      console.log('🔄 Calling onSuccess callback...');
+      if (typeof onSuccess === 'function') {
+        onSuccess();
+      } else {
+        console.error('❌ onSuccess is not a function:', typeof onSuccess);
+      }
+      
+      console.log('🔄 Calling onOpenChange callback...');
+      if (typeof onOpenChange === 'function') {
+        onOpenChange(false);
+      } else {
+        console.error('❌ onOpenChange is not a function:', typeof onOpenChange);
+      }
     } catch (error: any) {
       console.error('❌ Error updating product:', error);
       

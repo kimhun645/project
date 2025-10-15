@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator } from 'firebase/auth';
-import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getFirestore, connectFirestoreEmulator, enableIndexedDbPersistence } from 'firebase/firestore';
 import { firebaseConfig, productionFirebaseConfig } from './firebase-config';
 
 // ใช้ production config สำหรับ production environment
@@ -15,19 +15,17 @@ export const auth = getAuth(app);
 // Initialize Cloud Firestore and get a reference to the service
 export const db = getFirestore(app);
 
-// Debug Firebase configuration
-console.log('🔧 Firebase Config:', {
-  apiKey: config.apiKey,
-  authDomain: config.authDomain,
-  projectId: config.projectId,
-  storageBucket: config.storageBucket,
-  messagingSenderId: config.messagingSenderId,
-  appId: config.appId
+// Enable offline persistence for better performance
+enableIndexedDbPersistence(db).catch((err) => {
+  if (err.code === 'failed-precondition') {
+    console.log('Firestore persistence failed: Multiple tabs open');
+  } else if (err.code === 'unimplemented') {
+    console.log('Firestore persistence not supported in this browser');
+  } else {
+    console.error('Firestore persistence error:', err);
+  }
 });
 
-console.log('🔧 Firebase Auth instance:', auth);
-console.log('🔧 Firebase Auth domain:', auth.config.authDomain);
-console.log('🔧 Firebase Auth API key:', auth.config.apiKey);
 
 // Connect to emulators in development (disabled for now)
 // if (process.env.NODE_ENV === 'development') {

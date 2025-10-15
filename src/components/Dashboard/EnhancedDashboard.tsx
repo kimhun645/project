@@ -54,12 +54,12 @@ export function EnhancedDashboard() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
+      const { FirestoreService } = await import('@/lib/firestoreService');
 
       const [products, categories, movements] = await Promise.all([
-        firestoreService.getProducts(),
-        firestoreService.getCategories(),
-        firestoreService.getMovements()
+        FirestoreService.getProducts(),
+        FirestoreService.getCategories(),
+        FirestoreService.getMovements()
       ]);
 
       const lowStockItems = products.filter(p => p.currentStock <= p.minStock).length;
@@ -415,7 +415,7 @@ export function EnhancedDashboard() {
                     <ShoppingCart className="h-5 w-5 text-white" />
                   </div>
                   <div>
-                    <p className="font-semibold text-green-800">การเคลื่อนไหวสต็อก</p>
+                    <p className="font-semibold text-green-800">การเบิก/การรับพัสดุ</p>
                     <p className="text-sm text-green-600">{stats.recentMovements} รายการวันนี้</p>
                   </div>
                 </div>

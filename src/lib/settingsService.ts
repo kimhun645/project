@@ -53,14 +53,14 @@ export interface SettingsData {
 export const loadSettingsFromDB = async (): Promise<SettingsData> => {
   try {
     // Load settings - using API instead of direct database
-    const { firestoreService } = await import('./firestoreService');
-    const settings = await firestoreService.getSettings();
+    const { FirestoreService } = await import('./firestoreService');
+    const settings = await FirestoreService.getSettings();
     
     // Load requesters - using API instead of direct database
-    const requesters = await firestoreService.getRequesters();
+    const requesters = await FirestoreService.getRequesters();
     
     // Load approvers - using API instead of direct database
-    const approvers = await firestoreService.getApprovers();
+    const approvers = await FirestoreService.getApprovers();
     const activeApprover = approvers && approvers.length > 0 ? approvers[0] : null;
 
     // Convert API response to SettingsData format
@@ -144,8 +144,8 @@ export const saveSettingsToDB = async (settings: Partial<SettingsData>): Promise
       }
     });
 
-    const { firestoreService } = await import('./firestoreService');
-    await firestoreService.updateSettings(apiSettings);
+    const { FirestoreService } = await import('./firestoreService');
+    await FirestoreService.updateSettings(apiSettings);
     
     // Save approver data to approvers table
     if (settings.approverName && settings.approverEmail) {
@@ -170,11 +170,11 @@ export const saveSettingsToDB = async (settings: Partial<SettingsData>): Promise
 export const saveRequestersToDB = async (requesters: Omit<Requester, 'id' | 'created_at' | 'updated_at'>[]): Promise<boolean> => {
   try {
     // First, deactivate all existing requesters
-    await firestoreService.deactivateAllRequesters();
+    await FirestoreService.deactivateAllRequesters();
 
     // Insert new requesters
     for (const requester of requesters) {
-      await firestoreService.createRequester({
+      await FirestoreService.createRequester({
         name: requester.name,
         email: requester.email,
         department: requester.department,
@@ -193,10 +193,10 @@ export const saveRequestersToDB = async (requesters: Omit<Requester, 'id' | 'cre
 export const saveApproverToDB = async (approver: { name: string; email: string; department: string; position: string; cc_emails?: string; is_active: boolean }): Promise<boolean> => {
   try {
     // First, deactivate all existing approvers
-    await firestoreService.deactivateAllApprovers();
+    await FirestoreService.deactivateAllApprovers();
 
     // Insert new approver
-    await firestoreService.createApprover({
+    await FirestoreService.createApprover({
       name: approver.name,
       email: approver.email,
       department: approver.department,
@@ -220,7 +220,7 @@ export const importDataToDB = async (data: { products?: unknown[], categories?: 
     // Import products
     if (data.products && data.products.length > 0) {
       for (const product of data.products) {
-        await firestoreService.createProduct(product);
+        await FirestoreService.createProduct(product);
       }
       importedCount += data.products.length;
     }
@@ -228,7 +228,7 @@ export const importDataToDB = async (data: { products?: unknown[], categories?: 
     // Import categories
     if (data.categories && data.categories.length > 0) {
       for (const category of data.categories) {
-        await firestoreService.createCategory(category);
+        await FirestoreService.createCategory(category);
       }
       importedCount += data.categories.length;
     }
@@ -236,7 +236,7 @@ export const importDataToDB = async (data: { products?: unknown[], categories?: 
     // Import suppliers
     if (data.suppliers && data.suppliers.length > 0) {
       for (const supplier of data.suppliers) {
-        await firestoreService.createSupplier(supplier);
+        await FirestoreService.createSupplier(supplier);
       }
       importedCount += data.suppliers.length;
     }
@@ -244,7 +244,7 @@ export const importDataToDB = async (data: { products?: unknown[], categories?: 
     // Import movements
     if (data.movements && data.movements.length > 0) {
       for (const movement of data.movements) {
-        await firestoreService.createMovement(movement);
+        await FirestoreService.createMovement(movement);
       }
       importedCount += data.movements.length;
     }
@@ -299,8 +299,8 @@ export const testDatabaseConnection = async (host: string, port: string, databas
     const startTime = Date.now();
     
     // Test connection by trying to get settings
-    const { firestoreService } = await import('./firestoreService');
-    const settings = await firestoreService.getSettings();
+    const { FirestoreService } = await import('./firestoreService');
+    const settings = await FirestoreService.getSettings();
     
     const endTime = Date.now();
     const latency = endTime - startTime;
@@ -374,10 +374,10 @@ export const testEmailServerConnection = async (
 export const deleteAllDataFromDB = async (): Promise<boolean> => {
   try {
     // Delete in order to avoid foreign key constraints
-    await firestoreService.deleteAllMovements();
-    await firestoreService.deleteAllProducts();
-    await firestoreService.deleteAllCategories();
-    await firestoreService.deleteAllSuppliers();
+    await FirestoreService.deleteAllMovements();
+    await FirestoreService.deleteAllProducts();
+    await FirestoreService.deleteAllCategories();
+    await FirestoreService.deleteAllSuppliers();
     return true;
   } catch (error) {
     console.error('Error deleting all data from database:', error);

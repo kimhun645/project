@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -49,6 +49,7 @@ const formatDate = (dateString: string | undefined): string => {
 export default function Movements() {
   const [movements, setMovements] = useState<MovementWithProduct[]>([]);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const [receipts, setReceipts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -82,27 +83,43 @@ export default function Movements() {
   });
 
   // Fetch movements data
-  const fetchMovements = async () => {
+  const fetchMovements = useCallback(async () => {
     try {
       setIsLoading(true);
       const { FirestoreService } = await import('@/lib/firestoreService');
       
-      // Fetch both movements and withdrawals
-      const [movementsData, withdrawalsData] = await Promise.all([
+      // Fetch movements, withdrawals, and receipts
+      const [movementsData, withdrawalsData, receiptsData] = await Promise.all([
         FirestoreService.getMovements(),
-        FirestoreService.getWithdrawals()
+        FirestoreService.getWithdrawals(),
+        FirestoreService.getReceipts()
       ]);
+      
       
       
       // Convert withdrawals to movements format for display
       const withdrawalMovements: MovementWithProduct[] = [];
-      withdrawalsData.forEach(withdrawal => {
-        withdrawal.items.forEach(item => {
+      console.log('🔄 Processing withdrawals data:', {
+        withdrawalsCount: withdrawalsData.length,
+        firstWithdrawal: withdrawalsData[0] ? {
+          id: withdrawalsData[0].id,
+          withdrawal_no: withdrawalsData[0].withdrawal_no,
+          items: withdrawalsData[0].items?.map(item => ({
+            product_id: item.product_id,
+            product_name: item.product_name,
+            product_sku: item.product_sku
+          }))
+        } : null
+      });
+      
+      for (const withdrawal of withdrawalsData) {
+        for (const item of withdrawal.items) {
+          // ใช้ SKU ที่บันทึกไว้ในตาราง withdrawals แทนการดึงจากข้อมูลสินค้า
           withdrawalMovements.push({
             id: `${withdrawal.id}-${item.id}`,
             product_id: item.product_id,
             product_name: item.product_name,
-            product_sku: '', // Withdrawals don't have SKU
+            product_sku: item.product_sku || '',
             type: 'out' as const,
             quantity: item.quantity,
             reason: item.reason,
@@ -114,30 +131,58 @@ export default function Movements() {
             withdrawal_no: withdrawal.withdrawal_no,
             withdrawal_date: withdrawal.withdrawal_date
           });
-        });
-      });
+        }
+      }
+
+      // Convert receipts to movements format for display
+      const receiptMovements: MovementWithProduct[] = [];
+      for (const receipt of receiptsData) {
+        for (const item of receipt.items) {
+          // ใช้ SKU ที่บันทึกไว้ในตาราง receipts แทนการดึงจากข้อมูลสินค้า
+          receiptMovements.push({
+            id: `${receipt.id}-${item.id}`,
+            product_id: item.product_id,
+            product_name: item.product_name,
+            product_sku: item.product_sku || '',
+            type: 'in' as const,
+            quantity: item.quantity,
+            reason: `รับเข้าจาก ${receipt.supplier || 'ผู้จัดจำหน่าย'}`,
+            person_name: receipt.receiver_name,
+            person_role: 'ผู้รับ',
+            created_at: receipt.created_at,
+            updated_at: receipt.created_at,
+            created_by: receipt.created_by,
+            withdrawal_no: receipt.receipt_no, // Store receipt_no in withdrawal_no field for identification
+            withdrawal_date: receipt.receipt_date
+          });
+        }
+      }
       
       
-      // Combine movements and withdrawal movements
-      const allMovements = [...movementsData, ...withdrawalMovements];
+      // Combine movements, withdrawal movements, and receipt movements
+      const allMovements = [...movementsData, ...withdrawalMovements, ...receiptMovements];
       
-      // Ensure all movements have required properties
-        const sanitizedMovements: MovementWithProduct[] = allMovements.map(movement => {
-          const sanitized: MovementWithProduct = {
-            id: movement.id || '',
-            product_id: movement.product_id || '',
-            product_name: movement.product_name || '',
-            product_sku: movement.product_sku || '',
-            type: (movement.type || 'out') as 'in' | 'out',
-            quantity: movement.quantity || 0,
-            reason: movement.reason || '',
-            person_name: movement.person_name || '',
-            person_role: movement.person_role || '',
-            created_at: movement.created_at || new Date().toISOString(),
-            updated_at: movement.updated_at || new Date().toISOString(),
-            created_by: movement.created_by || ''
-          };
+      
+      // Ensure all movements have required properties and fetch SKU from product data
+      const sanitizedMovements: MovementWithProduct[] = [];
+        for (const movement of allMovements) {
+        // ใช้ SKU ที่บันทึกไว้ในตาราง stock_movements แทนการดึงจากข้อมูลสินค้า
         
+        const sanitized: MovementWithProduct = {
+          id: movement.id || '',
+          product_id: movement.product_id || '',
+          product_name: movement.product_name || '',
+          product_sku: movement.product_sku || '',
+          type: (movement.type || 'out') as 'in' | 'out',
+          quantity: movement.quantity || 0,
+          reason: movement.reason || '',
+          person_name: movement.person_name || '',
+          person_role: movement.person_role || '',
+          created_at: movement.created_at || new Date().toISOString(),
+          updated_at: movement.updated_at || new Date().toISOString(),
+          created_by: movement.created_by || ''
+        };
+      
         // Add optional withdrawal properties
         if ((movement as any).withdrawal_no) {
           sanitized.withdrawal_no = (movement as any).withdrawal_no;
@@ -146,11 +191,12 @@ export default function Movements() {
           sanitized.withdrawal_date = (movement as any).withdrawal_date;
         }
         
-        return sanitized;
-      });
+        sanitizedMovements.push(sanitized);
+      }
       
       setMovements(sanitizedMovements);
       setWithdrawals(withdrawalsData);
+      setReceipts(receiptsData);
       
     } catch (error) {
       console.error('Error fetching movements:', error);
@@ -162,25 +208,27 @@ export default function Movements() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
 
   useEffect(() => {
     fetchMovements();
-  }, []);
+  }, [fetchMovements]);
 
-  // Filter movements based on search term and type filter
-  const filteredMovements = (movements || []).filter(movement => {
-    if (!movement) return false;
-    
-    const matchesSearch = 
-      (movement.product_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-      (movement.product_sku || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-      (movement.reference && movement.reference.toLowerCase().includes((searchTerm || '').toLowerCase()));
-    
-    const matchesType = typeFilter === 'all' || movement.type === typeFilter;
-    
-    return matchesSearch && matchesType;
-  });
+  // Filter movements based on search term and type filter (memoized)
+  const filteredMovements = useMemo(() => {
+    return (movements || []).filter(movement => {
+      if (!movement) return false;
+      
+      const matchesSearch = 
+        (movement.product_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+        (movement.product_sku || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+        (movement.reference && movement.reference.toLowerCase().includes((searchTerm || '').toLowerCase()));
+      
+      const matchesType = typeFilter === 'all' || movement.type === typeFilter;
+      
+      return matchesSearch && matchesType;
+    });
+  }, [movements, searchTerm, typeFilter]);
 
   // Sort movements
   const sortedMovements = [...(filteredMovements || [])].sort((a, b) => {
@@ -290,7 +338,7 @@ export default function Movements() {
   const handlePrintMovement = (movement: MovementWithProduct) => {
     const printContent = `
       <div style="font-family: 'Sarabun', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px;">
-        <h1 style="text-align: center; color: #1f2937; margin-bottom: 30px;">รายละเอียด${movement.withdrawal_no ? 'การเบิกพัสดุ' : 'การรับพัสดุ'}</h1>
+        <h1 style="text-align: center; color: #1f2937; margin-bottom: 30px;">รายละเอียด${movement.type === 'in' ? 'การรับพัสดุ' : 'การเบิกพัสดุ'}</h1>
         
         <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
           <h2 style="color: #374151; margin-bottom: 15px;">ข้อมูลทั่วไป</h2>
@@ -369,7 +417,7 @@ export default function Movements() {
       printWindow.document.write(`
         <html>
           <head>
-            <title>รายละเอียดการเคลื่อนไหวสต็อก</title>
+            <title>รายละเอียดการรับ/การเบิกพัสดุ</title>
             <style>
               @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
               body { margin: 0; padding: 0; }
@@ -407,17 +455,30 @@ export default function Movements() {
         const deletePromises = (selectedMovements || []).filter(id => id).map(async (id) => {
           const movement = (movements || []).find(m => m && m.id === id);
           if (movement) {
-            // Check if it's a withdrawal movement
+            // Check if it's a withdrawal or receipt movement
             if (movement.withdrawal_no) {
-              // Extract withdrawal ID from the movement ID
-              const withdrawalId = String(id).split('-')[0];
-              await FirestoreService.deleteWithdrawal(withdrawalId);
-              
-              // Restore stock for withdrawal items
+              // Check if it's a withdrawal (type: 'out') or receipt (type: 'in')
               if (movement.type === 'out') {
+                // Extract withdrawal ID from the movement ID
+                const withdrawalId = String(id).split('-')[0];
+                await FirestoreService.deleteWithdrawal(withdrawalId);
+                
+                // Restore stock for withdrawal items
                 await FirestoreService.updateProduct(movement.product_id, {
                   current_stock: (await FirestoreService.getProduct(movement.product_id))?.current_stock + movement.quantity
                 });
+              } else if (movement.type === 'in') {
+                // Extract receipt ID from the movement ID
+                const receiptId = String(id).split('-')[0];
+                await FirestoreService.deleteReceipt(receiptId);
+                
+                // Restore stock for receipt items (receipt was adding stock, so deletion should reduce it)
+                const currentProduct = await FirestoreService.getProduct(movement.product_id);
+                if (currentProduct) {
+                  await FirestoreService.updateProduct(movement.product_id, {
+                    current_stock: currentProduct.current_stock - movement.quantity
+                  });
+                }
               }
             } else {
               // Regular movement - restore stock
@@ -445,17 +506,29 @@ export default function Movements() {
       } else {
         // Handle single delete
         if (movementToDelete && movementToDelete.id) {
-          // Check if it's a withdrawal movement
+          // Check if it's a withdrawal or receipt movement
           if (movementToDelete.withdrawal_no) {
-            // Extract withdrawal ID from the movement ID
-            const withdrawalId = String(movementToDelete.id).split('-')[0];
-            await FirestoreService.deleteWithdrawal(withdrawalId);
-            
-            // Restore stock for withdrawal items
             if (movementToDelete.type === 'out') {
+              // Extract withdrawal ID from the movement ID
+              const withdrawalId = String(movementToDelete.id).split('-')[0];
+              await FirestoreService.deleteWithdrawal(withdrawalId);
+              
+              // Restore stock for withdrawal items
               await FirestoreService.updateProduct(movementToDelete.product_id, {
                 current_stock: (await FirestoreService.getProduct(movementToDelete.product_id))?.current_stock + movementToDelete.quantity
               });
+            } else if (movementToDelete.type === 'in') {
+              // Extract receipt ID from the movement ID
+              const receiptId = String(movementToDelete.id).split('-')[0];
+              await FirestoreService.deleteReceipt(receiptId);
+              
+              // Restore stock for receipt items (receipt was adding stock, so deletion should reduce it)
+              const currentProduct = await FirestoreService.getProduct(movementToDelete.product_id);
+              if (currentProduct) {
+                await FirestoreService.updateProduct(movementToDelete.product_id, {
+                  current_stock: currentProduct.current_stock - movementToDelete.quantity
+                });
+              }
             }
           } else {
             // Regular movement - restore stock
@@ -492,45 +565,89 @@ export default function Movements() {
     }
   };
 
-  // Calculate stats
-  const today = new Date();
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const todayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  // Calculate stats with proper timezone handling
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   
-  // Get today's movements (for stock-in only)
+  // Helper function to normalize date for comparison
+  const normalizeDate = (dateInput: any): Date => {
+    if (!dateInput) return new Date(0);
+    
+    // Handle Firestore Timestamp
+    if (dateInput && typeof dateInput === 'object' && 'toDate' in dateInput) {
+      return dateInput.toDate();
+    }
+    
+    // Handle string dates
+    if (typeof dateInput === 'string') {
+      return new Date(dateInput);
+    }
+    
+    // Handle Date objects
+    if (dateInput instanceof Date) {
+      return dateInput;
+    }
+    
+    return new Date(0);
+  };
+  
+  
+  // Get today's movements (for stock-in only) - use all movements including converted receipts
   const todayMovements = (movements || []).filter(m => {
     if (!m || !m.created_at) return false;
-    const movementDate = new Date(m.created_at);
-    return movementDate >= todayStart && movementDate < todayEnd;
+    const movementDate = normalizeDate(m.created_at);
+    const isToday = movementDate >= todayStart && movementDate < todayEnd;
+    return isToday;
   });
+  
   
   // Get today's withdrawals (for stock-out) - use withdrawals data directly
   const todayWithdrawals = (withdrawals || []).filter(w => {
     if (!w || !w.created_at) return false;
-    
-    // Handle Firestore Timestamp
-    let withdrawalDate: Date;
-    if (w.created_at && typeof w.created_at === 'object' && 'toDate' in w.created_at) {
-      // Firestore Timestamp
-      withdrawalDate = (w.created_at as any).toDate();
-    } else if (typeof w.created_at === 'string') {
-      // String date
-      withdrawalDate = new Date(w.created_at);
-    } else {
-      return false;
-    }
-    
+    const withdrawalDate = normalizeDate(w.created_at);
     return withdrawalDate >= todayStart && withdrawalDate < todayEnd;
   });
   
   
-  const todayStockIn = todayMovements.filter(m => m && m.type === 'in').length;
-  const todayStockOut = todayWithdrawals.length; // Count withdrawals directly
+  // Count today's receipts directly from receipts state
+  const todayReceipts = (receipts || []).filter(receipt => {
+    if (!receipt.created_at) return false;
+    const receiptDate = normalizeDate(receipt.created_at);
+    const isToday = receiptDate >= todayStart && receiptDate < todayEnd;
+    return isToday;
+  }).length;
+
+  // Count today's withdrawals directly from withdrawals state
+  const todayWithdrawalsCount = (withdrawals || []).filter(withdrawal => {
+    if (!withdrawal.created_at) return false;
+    const withdrawalDate = normalizeDate(withdrawal.created_at);
+    const isToday = withdrawalDate >= todayStart && withdrawalDate < todayEnd;
+    return isToday;
+  }).length;
+  
+
+  // Count today's regular stock in movements (type === 'in' without withdrawal_no)
+  const todayRegularStockIn = todayMovements.filter(m => m && m.type === 'in' && !m.withdrawal_no).length;
+  // Count today's regular stock out movements (type === 'out' without withdrawal_no)
+  const todayRegularStockOut = todayMovements.filter(m => m && m.type === 'out' && !m.withdrawal_no).length;
+
+  const todayStockIn = todayReceipts + todayRegularStockIn;
+  const todayStockOut = todayWithdrawalsCount + todayRegularStockOut;
+  
+  
+  
+  
+  
   
   // Calculate total stats
   const totalMovements = (movements || []).length;
   const totalStockIn = (movements || []).filter(m => m && m.type === 'in').length;
-  const totalWithdrawals = (withdrawals || []).length; // Count withdrawals directly
+  
+  // Calculate totalStockOut to match todayStockOut calculation
+  const totalWithdrawals = (withdrawals || []).length;
+  const totalRegularStockOut = (movements || []).filter(m => m && m.type === 'out' && !m.withdrawal_no).length;
+  const totalStockOut = totalWithdrawals + totalRegularStockOut;
   const totalQuantityIn = (movements || []).filter(m => m && m.type === 'in').reduce((sum, m) => sum + (m.quantity || 0), 0);
   const totalQuantityOut = (withdrawals || []).reduce((sum, w) => {
     const itemsQuantity = (w.items || []).reduce((itemSum: number, item: any) => itemSum + (item.quantity || 0), 0);
@@ -710,14 +827,14 @@ export default function Movements() {
       value: todayStockIn,
       icon: <ArrowUp className="h-6 w-6" />,
       color: "green",
-      percentage: totalMovements > 0 ? `${Math.round((todayStockIn / totalMovements) * 100)}%` : "0%"
+      percentage: totalStockIn > 0 ? `${Math.round((todayStockIn / totalStockIn) * 100)}%` : "0%"
     },
     {
       title: "เบิกพัสดุวันนี้",
       value: todayStockOut,
       icon: <ArrowDown className="h-6 w-6" />,
       color: "red",
-      percentage: totalWithdrawals > 0 ? `${Math.round((todayStockOut / totalWithdrawals) * 100)}%` : "0%"
+      percentage: totalStockOut > 0 ? `${Math.round((todayStockOut / totalStockOut) * 100)}%` : "0%"
     },
     {
       title: "รายการทั้งหมด",
@@ -876,10 +993,10 @@ export default function Movements() {
           <DialogHeader>
             <DialogTitle className="text-xl font-bold text-gray-800 flex items-center gap-2">
               <Eye className="h-5 w-5 text-blue-600" />
-              รายละเอียด{movementToView?.withdrawal_no ? 'การเบิกพัสดุ' : 'การรับพัสดุ'}
+              รายละเอียด{movementToView?.type === 'in' ? 'การรับพัสดุ' : 'การเบิกพัสดุ'}
             </DialogTitle>
             <DialogDescription className="text-gray-600">
-              ข้อมูล{movementToView?.withdrawal_no ? 'การเบิกพัสดุ' : 'การรับพัสดุ'}ที่เลือก
+              ข้อมูล{movementToView?.type === 'in' ? 'การรับพัสดุ' : 'การเบิกพัสดุ'}ที่เลือก
             </DialogDescription>
           </DialogHeader>
 
@@ -893,7 +1010,7 @@ export default function Movements() {
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm font-medium text-gray-600">รหัส{movementToView.withdrawal_no ? 'การเบิก' : 'การรับ'}</label>
+                    <label className="text-sm font-medium text-gray-600">รหัส{movementToView.type === 'in' ? 'การรับ' : 'การเบิก'}</label>
                     <p className="text-base font-mono bg-white px-3 py-2 rounded-lg border">
                       {movementToView.withdrawal_no || movementToView.id}
                     </p>
@@ -927,7 +1044,7 @@ export default function Movements() {
                   </div>
                   {movementToView.withdrawal_no && (
                     <div>
-                      <label className="text-sm font-medium text-gray-600">เลขที่เบิก</label>
+                      <label className="text-sm font-medium text-gray-600">เลขที่{movementToView.type === 'in' ? 'รับ' : 'เบิก'}</label>
                       <p className="text-base bg-white px-3 py-2 rounded-lg border">
                         {movementToView.withdrawal_no}
                       </p>
@@ -977,12 +1094,12 @@ export default function Movements() {
                 <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-4 rounded-xl border border-purple-200">
                   <h3 className="text-lg font-semibold text-purple-800 mb-3 flex items-center gap-2">
                     <User className="h-5 w-5" />
-                    ข้อมูล{movementToView.withdrawal_no ? 'ผู้เบิก' : 'ผู้รับ'}
+                    ข้อมูล{movementToView.type === 'in' ? 'ผู้รับ' : 'ผู้เบิก'}
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium text-gray-600">
-                        {movementToView.withdrawal_no ? 'ผู้เบิกพัสดุ' : 'ผู้รับพัสดุ'}
+                        {movementToView.type === 'in' ? 'ผู้รับพัสดุ' : 'ผู้เบิกพัสดุ'}
                       </label>
                       <p className="text-base bg-white px-3 py-2 rounded-lg border">
                         {movementToView.person_name}

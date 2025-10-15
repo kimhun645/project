@@ -25,7 +25,7 @@ interface SidebarProps {
 const navigation = [
   { name: 'แดชบอร์ด', href: '/dashboard', icon: BarChart3 },
   { name: 'สินค้า', href: '/products', icon: Package },
-  { name: 'การเคลื่อนไหวสต็อก', href: '/movements', icon: ArrowUpDown },
+  { name: 'การเบิก/การรับพัสดุ', href: '/movements', icon: ArrowUpDown },
   { name: 'หมวดหมู่', href: '/categories', icon: Tags },
   { name: 'ผู้จำหน่าย', href: '/suppliers', icon: Truck },
   { name: 'สแกนบาร์โค้ด', href: '/scanner', icon: ScanLine },

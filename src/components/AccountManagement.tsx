@@ -9,7 +9,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Edit, Trash2, Search, Hash, FileText, DollarSign, Building, Tag, CheckCircle, XCircle, Copy, Download, Upload } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Hash, FileText, DollarSign, Building, Tag, CheckCircle, XCircle, Copy, Download, Upload, Key } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface AccountCode {
@@ -83,14 +83,22 @@ export function AccountManagement() {
     setIsLoading(true);
     try {
       // Load from Firestore collection 'accountCodes'
-      const { firestoreService } = await import('@/lib/firestoreService');
-      const accountCodes = await firestoreService.getAccountCodes();
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      const accountCodes = await FirestoreService.getAccountCodes();
       setAccountCodes(accountCodes);
+      
+      if (accountCodes.length === 0) {
+        toast({
+          title: "ไม่พบข้อมูล",
+          description: "ไม่พบข้อมูลรหัสบัญชีในระบบ กรุณาเพิ่มข้อมูลก่อน",
+          variant: "default",
+        });
+      }
     } catch (error) {
       console.error('Error loading account codes:', error);
       toast({
         title: "เกิดข้อผิดพลาด",
-        description: "ไม่สามารถโหลดข้อมูลรหัสบัญชีได้",
+        description: `ไม่สามารถโหลดข้อมูลรหัสบัญชีได้: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variant: "destructive",
       });
     } finally {
@@ -98,9 +106,30 @@ export function AccountManagement() {
     }
   };
 
+
+  const handleCreateSampleData = async () => {
+    try {
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      await FirestoreService.createSampleAccountCodes();
+      await loadAccountCodes(); // Reload data
+      
+      toast({
+        title: "สร้างข้อมูลตัวอย่างสำเร็จ",
+        description: "สร้างข้อมูลตัวอย่างรหัสบัญชีเรียบร้อยแล้ว",
+      });
+    } catch (error) {
+      console.error('Error creating sample data:', error);
+      toast({
+        title: "เกิดข้อผิดพลาด",
+        description: "ไม่สามารถสร้างข้อมูลตัวอย่างได้",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleAddAccountCode = async () => {
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
+      const { FirestoreService } = await import('@/lib/firestoreService');
       const newAccountCode: Omit<AccountCode, 'id'> = {
         ...formData,
         createdAt: new Date().toISOString(),
@@ -109,7 +138,7 @@ export function AccountManagement() {
         updatedBy: 'current-user'
       };
       
-      await firestoreService.addAccountCode(newAccountCode);
+      await FirestoreService.addAccountCode(newAccountCode);
       await loadAccountCodes(); // Reload data
       setIsAddDialogOpen(false);
       resetForm();
@@ -132,14 +161,14 @@ export function AccountManagement() {
     if (!selectedAccountCode) return;
     
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
+      const { FirestoreService } = await import('@/lib/firestoreService');
       const updatedAccountCode: Partial<AccountCode> = {
         ...formData,
         updatedAt: new Date().toISOString(),
         updatedBy: 'current-user'
       };
       
-      await firestoreService.updateAccountCode(selectedAccountCode.id, updatedAccountCode);
+      await FirestoreService.updateAccountCode(selectedAccountCode.id, updatedAccountCode);
       await loadAccountCodes(); // Reload data
       setIsEditDialogOpen(false);
       setSelectedAccountCode(null);
@@ -150,10 +179,10 @@ export function AccountManagement() {
         description: `แก้ไขข้อมูลรหัสบัญชี ${formData.code} เรียบร้อยแล้ว`,
       });
     } catch (error) {
-      console.error('Error editing account code:', error);
+      console.error('❌ ข้อผิดพลาดในการแก้ไขรหัสบัญชี:', error);
       toast({
         title: "เกิดข้อผิดพลาด",
-        description: "ไม่สามารถแก้ไขรหัสบัญชีได้",
+        description: `ไม่สามารถแก้ไขรหัสบัญชีได้: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variant: "destructive",
       });
     }
@@ -161,8 +190,8 @@ export function AccountManagement() {
 
   const handleDeleteAccountCode = async (accountCodeId: string) => {
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
-      await firestoreService.deleteAccountCode(accountCodeId);
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      await FirestoreService.deleteAccountCode(accountCodeId);
       await loadAccountCodes(); // Reload data
       
       toast({
@@ -185,7 +214,7 @@ export function AccountManagement() {
       const accountCode = accountCodes.find(ac => ac.id === accountCodeId);
       if (!accountCode) return;
       
-      await firestoreService.updateAccountCode(accountCodeId, {
+      await FirestoreService.updateAccountCode(accountCodeId, {
         isActive: !accountCode.isActive,
         updatedAt: new Date().toISOString(),
         updatedBy: 'current-user'
@@ -226,8 +255,8 @@ export function AccountManagement() {
         };
       });
 
-      const { firestoreService } = await import('@/lib/firestoreService');
-      await firestoreService.bulkAddAccountCodes(accountCodes);
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      await FirestoreService.bulkAddAccountCodes(accountCodes);
       await loadAccountCodes(); // Reload data
       
       setIsBulkImportDialogOpen(false);
@@ -323,6 +352,10 @@ export function AccountManagement() {
           <p className="text-gray-600">จัดการรหัสบัญชีสำหรับระบบบัญชี</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={handleCreateSampleData}>
+            <Hash className="h-4 w-4 mr-2" />
+            สร้างข้อมูลตัวอย่าง
+          </Button>
           <Button variant="outline" onClick={handleExportData}>
             <Download className="h-4 w-4 mr-2" />
             ส่งออก

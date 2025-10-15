@@ -147,7 +147,7 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
       // Search products
       if (filters.type === 'all' || filters.type === 'products') {
         searchPromises.push(
-          firestoreService.getProducts().then(products => {
+          FirestoreService.getProducts().then(products => {
             return products.filter(product => 
               product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
               product.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -164,7 +164,7 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
       // Search categories
       if (filters.type === 'all' || filters.type === 'categories') {
         searchPromises.push(
-          firestoreService.getCategories().then(categories => {
+          FirestoreService.getCategories().then(categories => {
             return categories.filter(category =>
               category.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
               category.description?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -178,7 +178,7 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
       // Search suppliers
       if (filters.type === 'all' || filters.type === 'suppliers') {
         searchPromises.push(
-          firestoreService.getSuppliers().then(suppliers => {
+          FirestoreService.getSuppliers().then(suppliers => {
             return suppliers.filter(supplier =>
               supplier.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
               supplier.contact?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -194,7 +194,7 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
       // Search movements
       if (filters.type === 'all' || filters.type === 'movements') {
         searchPromises.push(
-          firestoreService.getMovements().then(movements => {
+          FirestoreService.getMovements().then(movements => {
             return movements.filter(movement =>
               movement.reason.toLowerCase().includes(searchQuery.toLowerCase()) ||
               movement.reference?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -292,8 +292,8 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
       const suggestions: string[] = [];
       
       // Get product suggestions
-      const { firestoreService } = await import('@/lib/firestoreService');
-      const products = await firestoreService.getProducts();
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      const products = await FirestoreService.getProducts();
       const productSuggestions = products
         .filter(p => p.name.toLowerCase().includes(query.toLowerCase()))
         .map(p => p.name)
@@ -301,7 +301,7 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
       suggestions.push(...productSuggestions);
 
       // Get category suggestions
-      const categories = await firestoreService.getCategories();
+      const categories = await FirestoreService.getCategories();
       const categorySuggestions = categories
         .filter(c => c.name.toLowerCase().includes(query.toLowerCase()))
         .map(c => c.name)
@@ -309,7 +309,7 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
       suggestions.push(...categorySuggestions);
 
       // Get supplier suggestions
-      const suppliers = await firestoreService.getSuppliers();
+      const suppliers = await FirestoreService.getSuppliers();
       const supplierSuggestions = suppliers
         .filter(s => s.name.toLowerCase().includes(query.toLowerCase()))
         .map(s => s.name)

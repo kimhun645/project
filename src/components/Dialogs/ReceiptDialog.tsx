@@ -30,7 +30,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { firestoreService } from '@/lib/firestoreService';
+import { FirestoreService } from '@/lib/firestoreService';
 import { useBarcodeScanner } from '@/hooks/use-barcode-scanner';
 
 interface ProductForReceipt {
@@ -51,7 +51,8 @@ interface ReceiptItem {
   unit: string;
   unit_price: number;
   total_price: number;
-  is_medicine?: boolean;
+  supplier: string;
+  batch_no?: string;
   expiry_date?: string;
 }
 
@@ -102,6 +103,8 @@ export function ReceiptDialog({ onReceiptAdded }: ReceiptDialogProps) {
   const [selectedUnitPrice, setSelectedUnitPrice] = useState('');
   const [selectedExpiryDate, setSelectedExpiryDate] = useState('');
   const [selectedBatchNo, setSelectedBatchNo] = useState('');
+  const [manualBarcode, setManualBarcode] = useState('');
+  const [addMethod, setAddMethod] = useState<'dropdown' | 'barcode'>('barcode');
 
   const resetForm = () => {
     setFormData({
@@ -119,6 +122,8 @@ export function ReceiptDialog({ onReceiptAdded }: ReceiptDialogProps) {
     setSelectedUnitPrice('');
     setSelectedExpiryDate('');
     setSelectedBatchNo('');
+    setManualBarcode('');
+    setAddMethod('barcode');
   };
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -146,10 +151,12 @@ export function ReceiptDialog({ onReceiptAdded }: ReceiptDialogProps) {
 
   const fetchProducts = async () => {
     try {
-      const data = await firestoreService.getProducts();
+      console.log('🔄 Fetching products for ReceiptDialog...');
+      const data = await FirestoreService.getProducts();
+      console.log('📦 Products fetched:', data?.length || 0, 'items');
       setProducts(data || []);
     } catch (error) {
-      console.error('Error fetching products:', error);
+      console.error('❌ Error fetching products:', error);
       toast({
         title: "เกิดข้อผิดพลาด",
         description: "ไม่สามารถดึงข้อมูลสินค้าได้",
@@ -174,7 +181,7 @@ export function ReceiptDialog({ onReceiptAdded }: ReceiptDialogProps) {
       if (!item.expiry_date) {
         return 'ยาต้องระบุวันที่หมดอายุ';
       }
-      if (!selectedBatchNo) {
+      if (!item.batch_no) {
         return 'ยาต้องระบุเลขที่ล็อต';
       }
     }
@@ -203,12 +210,13 @@ export function ReceiptDialog({ onReceiptAdded }: ReceiptDialogProps) {
       id: Date.now().toString(),
       product_id: productId,
       product_name: product.name,
-      product_sku: product.sku,
+      product_sku: product.sku || '',
       quantity: quantity,
       unit: 'ชิ้น',
       unit_price: unitPrice,
       total_price: totalPrice,
-      is_medicine: product.is_medicine || false,
+      supplier: formData.supplier || 'ไม่ระบุ',
+      batch_no: selectedBatchNo || undefined,
       expiry_date: selectedExpiryDate || undefined
     };
 
@@ -253,6 +261,59 @@ export function ReceiptDialog({ onReceiptAdded }: ReceiptDialogProps) {
       }
       return item;
     }));
+  };
+
+  const handleManualBarcodeSubmit = () => {
+    if (!manualBarcode.trim()) {
+      toast({
+        title: "กรุณากรอกบาร์โค้ด",
+        description: "กรุณากรอกบาร์โค้ดที่ต้องการค้นหา",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    console.log('🔍 Manual barcode search:', manualBarcode);
+    const product = products.find(p => p.barcode === manualBarcode.trim());
+    if (product) {
+      console.log('✅ Product found:', product);
+      addProductToReceipt(product.id);
+      setManualBarcode('');
+      toast({
+        title: "พบสินค้า",
+        description: `พบสินค้า: ${product.name}`,
+      });
+    } else {
+      console.log('❌ Product not found for barcode:', manualBarcode);
+      toast({
+        title: "ไม่พบสินค้า",
+        description: `บาร์โค้ด "${manualBarcode}" ไม่มีในระบบ`,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDropdownSubmit = () => {
+    if (!selectedProductId) {
+      toast({
+        title: "กรุณาเลือกสินค้า",
+        description: "กรุณาเลือกสินค้าที่ต้องการรับเข้า",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    console.log('🔍 Dropdown product selected:', selectedProductId);
+    addProductToReceipt(selectedProductId);
+    setSelectedProductId('');
+    setSelectedQuantity('');
+    setSelectedUnitPrice('');
+    setSelectedExpiryDate('');
+    setSelectedBatchNo('');
+    toast({
+      title: "เพิ่มสินค้า",
+      description: "เพิ่มสินค้าจากรายการเรียบร้อย",
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -303,12 +364,41 @@ export function ReceiptDialog({ onReceiptAdded }: ReceiptDialogProps) {
       };
       
       console.log('📝 Creating receipt with data:', receiptData);
-      await firestoreService.createReceipt(receiptData);
+      
+      // Debug: Check for undefined values
+      const checkForUndefined = (obj: any, path = ''): string[] => {
+        const undefinedFields: string[] = [];
+        for (const key in obj) {
+          const currentPath = path ? `${path}.${key}` : key;
+          if (obj[key] === undefined) {
+            undefinedFields.push(currentPath);
+          } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+            undefinedFields.push(...checkForUndefined(obj[key], currentPath));
+          }
+        }
+        return undefinedFields;
+      };
+      
+      const undefinedFields = checkForUndefined(receiptData);
+      if (undefinedFields.length > 0) {
+        console.error('❌ Found undefined fields:', undefinedFields);
+        toast({
+          title: "ข้อมูลไม่ครบถ้วน",
+          description: `พบข้อมูลที่ไม่ถูกต้อง: ${undefinedFields.join(', ')}`,
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      await FirestoreService.createReceipt(receiptData);
       console.log('✅ Receipt created successfully');
+      
+      // Notify parent component to refresh data
+      onReceiptAdded();
 
       // Update product stocks
       for (const item of receiptItems) {
-        const product = await firestoreService.getProductById(item.product_id);
+        const product = await FirestoreService.getProduct(item.product_id);
         if (product) {
           const newStock = (product.current_stock || 0) + item.quantity;
           
@@ -319,7 +409,7 @@ export function ReceiptDialog({ onReceiptAdded }: ReceiptDialogProps) {
             newStock: newStock
           });
 
-          await firestoreService.updateProduct(item.product_id, {
+          await FirestoreService.updateProduct(item.product_id, {
             current_stock: newStock
           });
           console.log('✅ Stock updated successfully for product:', item.product_id);
@@ -517,8 +607,95 @@ export function ReceiptDialog({ onReceiptAdded }: ReceiptDialogProps) {
               </div>
               <h3 className="text-base font-semibold text-slate-800">เพิ่มรายการสินค้า</h3>
             </div>
+
+            {/* Method Selection */}
+            <div className="flex space-x-2 mb-3">
+              <Button
+                type="button"
+                onClick={() => setAddMethod('barcode')}
+                variant={addMethod === 'barcode' ? 'default' : 'outline'}
+                className={`h-9 px-4 text-sm font-bold transition-all duration-200 rounded-lg ${
+                  addMethod === 'barcode' 
+                    ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg' 
+                    : 'border-2 border-green-200 text-green-600 hover:bg-green-50'
+                }`}
+              >
+                <Package className="h-4 w-4 mr-1" />
+                บาร์โค้ด
+              </Button>
+              <Button
+                type="button"
+                onClick={() => setAddMethod('dropdown')}
+                variant={addMethod === 'dropdown' ? 'default' : 'outline'}
+                className={`h-9 px-4 text-sm font-bold transition-all duration-200 rounded-lg ${
+                  addMethod === 'dropdown' 
+                    ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg' 
+                    : 'border-2 border-blue-200 text-blue-600 hover:bg-blue-50'
+                }`}
+              >
+                <Package className="h-4 w-4 mr-1" />
+                รายการ
+              </Button>
+            </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* Barcode Method */}
+            {addMethod === 'barcode' && (
+              <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg">
+                <div className="flex items-center space-x-2 mb-2">
+                  <Package className="h-5 w-5 text-green-600" />
+                  <span className="text-sm text-green-700 font-medium">
+                    วิธีใช้งาน: สแกนบาร์โค้ดสินค้าเพื่อเพิ่มรายการ
+                  </span>
+                </div>
+                <div className="text-xs text-green-600 space-y-1">
+                  <p>• สแกน 1 ครั้ง = เพิ่ม 1 ชิ้น</p>
+                  <p>• สแกนรหัสเดิม = เพิ่มจำนวนของสินค้านั้น</p>
+                  <p>• สแกนรหัสใหม่ = เพิ่มสินค้าใหม่</p>
+                  <p className="text-blue-600 font-medium">💡 ทดสอบ: พิมพ์บาร์โค้ดของสินค้าแล้วกด Enter</p>
+                </div>
+                
+                {/* Manual Barcode Input */}
+                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Package className="h-4 w-4 text-blue-600" />
+                    <span className="text-sm text-blue-700 font-medium">
+                      กรอกบาร์โค้ดด้วยตนเอง
+                    </span>
+                  </div>
+                  <div className="flex space-x-2">
+                    <Input
+                      type="text"
+                      value={manualBarcode}
+                      onChange={(e) => setManualBarcode(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && handleManualBarcodeSubmit()}
+                      placeholder="กรอกบาร์โค้ดสินค้า"
+                      className="h-9 text-sm border-2 border-blue-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white hover:bg-blue-50 transition-all duration-200 shadow-sm hover:shadow-md rounded-lg"
+                    />
+                    <Button
+                      type="button"
+                      onClick={handleManualBarcodeSubmit}
+                      disabled={!manualBarcode.trim()}
+                      className="h-9 px-4 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white text-sm font-bold shadow-lg hover:shadow-xl transition-all duration-200 rounded-lg border-0"
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      เพิ่ม
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Dropdown Method */}
+            {addMethod === 'dropdown' && (
+              <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center space-x-2 mb-2">
+                  <Package className="h-5 w-5 text-blue-600" />
+                  <span className="text-sm text-blue-700 font-medium">
+                    เลือกสินค้าจากรายการ
+                  </span>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs font-semibold text-slate-700">
                   สินค้า
@@ -528,11 +705,17 @@ export function ReceiptDialog({ onReceiptAdded }: ReceiptDialogProps) {
                     <SelectValue placeholder="เลือกสินค้า" />
                   </SelectTrigger>
                   <SelectContent className="relative z-50 rounded-lg border-2 border-slate-200 shadow-xl">
-                    {products.map((product) => (
-                      <SelectItem key={product.id} value={product.id} className="text-sm py-2 hover:bg-blue-50">
-                        <div className="font-semibold">{product.name}</div>
+                    {products.length === 0 ? (
+                      <SelectItem value="no-products" disabled className="text-sm py-2 text-gray-500">
+                        ไม่มีสินค้าในระบบ
                       </SelectItem>
-                    ))}
+                    ) : (
+                      products.map((product) => (
+                        <SelectItem key={product.id} value={product.id} className="text-sm py-2 hover:bg-blue-50">
+                          <div className="font-semibold">{product.name}</div>
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -594,32 +777,15 @@ export function ReceiptDialog({ onReceiptAdded }: ReceiptDialogProps) {
             <div className="flex justify-end">
               <Button
                 type="button"
-                onClick={() => {
-                  if (selectedProductId && selectedQuantity) {
-                    const selectedProduct = products.find(p => p.id === selectedProductId);
-                    if (selectedProduct?.is_medicine && !selectedExpiryDate) {
-                      toast({
-                        title: "กรุณากรอกวันที่หมดอายุ",
-                        description: "สินค้าเป็นยาต้องระบุวันที่หมดอายุ",
-                        variant: "destructive",
-                      });
-                      return;
-                    }
-                    addProductToReceipt(selectedProductId);
-                  } else {
-                    toast({
-                      title: "กรุณาเลือกสินค้าและจำนวน",
-                      description: "กรุณาเลือกสินค้าและระบุจำนวน",
-                      variant: "destructive",
-                    });
-                  }
-                }}
+                onClick={handleDropdownSubmit}
                 className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white text-sm font-bold shadow-lg hover:shadow-xl transition-all duration-200 rounded-lg border-0"
               >
                 <Plus className="h-4 w-4 mr-1" />
                 เพิ่มรายการ
               </Button>
             </div>
+              </div>
+            )}
           </div>
 
           {/* Receipt Items List */}

@@ -9,7 +9,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Plus, Loader2, CalendarIcon, Package, Tag, Building2, MapPin, DollarSign, BarChart3, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { firestoreService } from '@/lib/firestoreService';
+import { FirestoreService } from '@/lib/firestoreService';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
@@ -95,8 +95,8 @@ export function AddProductDialogWithResponsiveModal({
   const fetchCategoriesAndSuppliers = async () => {
     try {
       const [categoriesResult, suppliersResult] = await Promise.all([
-        firestoreService.getCategories(),
-        firestoreService.getSuppliers()
+        FirestoreService.getCategories(),
+        FirestoreService.getSuppliers()
       ]);
 
       setCategories(categoriesResult || []);
@@ -118,7 +118,7 @@ export function AddProductDialogWithResponsiveModal({
 
   const generateSKU = async () => {
     try {
-      const products = await firestoreService.getProducts();
+      const products = await FirestoreService.getProducts();
       
       let nextNum = 1;
       if (products && products.length > 0) {
@@ -234,7 +234,7 @@ export function AddProductDialogWithResponsiveModal({
         sku = await generateSKU();
       }
 
-      const products = await firestoreService.getProducts();
+      const products = await FirestoreService.getProducts();
       const existingSKU = products.find(p => p.sku === sku);
       
       if (existingSKU) {
@@ -262,7 +262,7 @@ export function AddProductDialogWithResponsiveModal({
         ...(expiryDate && { expiry_date: expiryDate.toISOString().split('T')[0] })
       };
       
-      await firestoreService.createProduct(productData);
+      await FirestoreService.createProduct(productData);
 
       toast({
         title: "เพิ่มสินค้าเรียบร้อย",

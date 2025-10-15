@@ -7,8 +7,8 @@ export class ApiService {
   // Categories - Use Firebase Firestore directly
   static async getCategories(): Promise<Category[]> {
     try {
-      const { firestoreService } = await import('./firestoreService');
-      return await firestoreService.getCategories();
+      const { FirestoreService } = await import('./FirestoreService');
+      return await FirestoreService.getCategories();
     } catch (error) {
       console.error('Error getting categories:', error);
       return [];
@@ -17,8 +17,8 @@ export class ApiService {
 
   static async createCategory(category: Omit<Category, 'id' | 'created_at' | 'updated_at'>): Promise<Category> {
     try {
-      const { firestoreService } = await import('./firestoreService');
-      return await firestoreService.createCategory(category);
+      const { FirestoreService } = await import('./FirestoreService');
+      return await FirestoreService.createCategory(category);
     } catch (error) {
       console.error('Error creating category:', error);
       throw error;
@@ -27,8 +27,8 @@ export class ApiService {
 
   static async updateCategory(id: string, category: Partial<Category>): Promise<Category> {
     try {
-      const { firestoreService } = await import('./firestoreService');
-      await firestoreService.updateCategory(id, category);
+      const { FirestoreService } = await import('./FirestoreService');
+      await FirestoreService.updateCategory(id, category);
       return { id, ...category } as Category;
     } catch (error) {
       console.error('Error updating category:', error);
@@ -38,8 +38,8 @@ export class ApiService {
 
   static async deleteCategory(id: string): Promise<void> {
     try {
-      const { firestoreService } = await import('./firestoreService');
-      await firestoreService.deleteCategory(id);
+      const { FirestoreService } = await import('./FirestoreService');
+      await FirestoreService.deleteCategory(id);
     } catch (error) {
       console.error('Error deleting category:', error);
       throw error;
@@ -49,8 +49,8 @@ export class ApiService {
   // Products - Use Firebase Firestore directly
   static async getProducts(): Promise<Product[]> {
     try {
-      const { firestoreService } = await import('./firestoreService');
-      return await firestoreService.getProducts();
+      const { FirestoreService } = await import('./FirestoreService');
+      return await FirestoreService.getProducts();
     } catch (error) {
       console.error('Error getting products:', error);
       return [];
@@ -59,8 +59,8 @@ export class ApiService {
 
   static async createProduct(product: Omit<Product, 'id' | 'created_at' | 'updated_at'>): Promise<Product> {
     try {
-      const { firestoreService } = await import('./firestoreService');
-      return await firestoreService.createProduct(product);
+      const { FirestoreService } = await import('./FirestoreService');
+      return await FirestoreService.createProduct(product);
     } catch (error) {
       console.error('Error creating product:', error);
       throw error;
@@ -69,8 +69,8 @@ export class ApiService {
 
   static async updateProduct(id: string, product: Partial<Product>): Promise<Product> {
     try {
-      const { firestoreService } = await import('./firestoreService');
-      await firestoreService.updateProduct(id, product);
+      const { FirestoreService } = await import('./FirestoreService');
+      await FirestoreService.updateProduct(id, product);
       return { id, ...product } as Product;
     } catch (error) {
       console.error('Error updating product:', error);
@@ -80,8 +80,8 @@ export class ApiService {
 
   static async deleteProduct(id: string): Promise<void> {
     try {
-      const { firestoreService } = await import('./firestoreService');
-      await firestoreService.deleteProduct(id);
+      const { FirestoreService } = await import('./FirestoreService');
+      await FirestoreService.deleteProduct(id);
     } catch (error) {
       console.error('Error deleting product:', error);
       throw error;
@@ -91,8 +91,8 @@ export class ApiService {
   // Suppliers - Use Firebase Firestore directly
   static async getSuppliers(): Promise<Supplier[]> {
     try {
-      const { firestoreService } = await import('./firestoreService');
-      return await firestoreService.getSuppliers();
+      const { FirestoreService } = await import('./FirestoreService');
+      return await FirestoreService.getSuppliers();
     } catch (error) {
       console.error('Error getting suppliers:', error);
       return [];
@@ -101,8 +101,8 @@ export class ApiService {
 
   static async createSupplier(supplier: Omit<Supplier, 'id' | 'created_at' | 'updated_at'>): Promise<Supplier> {
     try {
-      const { firestoreService } = await import('./firestoreService');
-      return await firestoreService.createSupplier(supplier);
+      const { FirestoreService } = await import('./FirestoreService');
+      return await FirestoreService.createSupplier(supplier);
     } catch (error) {
       console.error('Error creating supplier:', error);
       throw error;
@@ -111,8 +111,8 @@ export class ApiService {
 
   static async updateSupplier(id: string, supplier: Partial<Supplier>): Promise<Supplier> {
     try {
-      const { firestoreService } = await import('./firestoreService');
-      await firestoreService.updateSupplier(id, supplier);
+      const { FirestoreService } = await import('./FirestoreService');
+      await FirestoreService.updateSupplier(id, supplier);
       return { id, ...supplier } as Supplier;
     } catch (error) {
       console.error('Error updating supplier:', error);
@@ -122,8 +122,8 @@ export class ApiService {
 
   static async deleteSupplier(id: string): Promise<void> {
     try {
-      const { firestoreService } = await import('./firestoreService');
-      await firestoreService.deleteSupplier(id);
+      const { FirestoreService } = await import('./FirestoreService');
+      await FirestoreService.deleteSupplier(id);
     } catch (error) {
       console.error('Error deleting supplier:', error);
       throw error;
@@ -133,8 +133,8 @@ export class ApiService {
   // Movements - Use Firebase Firestore directly
   static async getMovements(): Promise<Movement[]> {
     try {
-      const { firestoreService } = await import('./firestoreService');
-      return await firestoreService.getMovements();
+      const { FirestoreService } = await import('./FirestoreService');
+      return await FirestoreService.getMovements();
     } catch (error) {
       console.error('Error getting movements:', error);
       return [];
@@ -143,8 +143,8 @@ export class ApiService {
 
   static async createMovement(movement: Omit<Movement, 'id' | 'created_at' | 'updated_at'>): Promise<Movement> {
     try {
-      const { firestoreService } = await import('./firestoreService');
-      return await firestoreService.createMovement(movement);
+      const { FirestoreService } = await import('./FirestoreService');
+      return await FirestoreService.createMovement(movement);
     } catch (error) {
       console.error('Error creating movement:', error);
       throw error;
@@ -154,8 +154,8 @@ export class ApiService {
   // Budget Requests - Use Firebase Firestore directly
   static async getBudgetRequests(): Promise<BudgetRequest[]> {
     try {
-      const { firestoreService } = await import('./firestoreService');
-      return await firestoreService.getBudgetRequests();
+      const { FirestoreService } = await import('./FirestoreService');
+      return await FirestoreService.getBudgetRequests();
     } catch (error) {
       console.error('Error getting budget requests:', error);
       return [];
@@ -164,8 +164,8 @@ export class ApiService {
 
   static async createBudgetRequest(budgetRequest: Omit<BudgetRequest, 'id' | 'created_at' | 'updated_at'>): Promise<BudgetRequest> {
     try {
-      const { firestoreService } = await import('./firestoreService');
-      return await firestoreService.createBudgetRequest(budgetRequest);
+      const { FirestoreService } = await import('./FirestoreService');
+      return await FirestoreService.createBudgetRequest(budgetRequest);
     } catch (error) {
       console.error('Error creating budget request:', error);
       throw error;

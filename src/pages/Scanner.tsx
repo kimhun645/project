@@ -36,8 +36,8 @@ export default function Scanner() {
 
   const searchProductByBarcode = async (barcodeValue: string) => {
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
-      const products = await firestoreService.getProducts();
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      const products = await FirestoreService.getProducts();
       return products.find(p => p.barcode === barcodeValue || p.sku === barcodeValue) || null;
     } catch (error) {
       console.error('Error searching product:', error);

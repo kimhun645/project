@@ -28,7 +28,7 @@ import {
   MessageSquare
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { firestoreService, Movement } from '@/lib/firestoreService';
+import { FirestoreService, Movement } from '@/lib/firestoreService';
 
 interface ProductForMovement {
   id: string;
@@ -95,7 +95,7 @@ export function EditMovementDialog({ movement, open, onOpenChange, onMovementUpd
 
   const fetchProducts = async () => {
     try {
-      const data = await firestoreService.getProducts();
+      const data = await FirestoreService.getProducts();
       setProducts(data || []);
     } catch (error) {
       console.error('Error fetching products:', error);
@@ -142,7 +142,7 @@ export function EditMovementDialog({ movement, open, onOpenChange, onMovementUpd
 
     try {
       // Get current product stock
-      const product = await firestoreService.getProductById(formData.product_id);
+      const product = await FirestoreService.getProduct(formData.product_id);
       if (!product) throw new Error('ไม่พบสินค้า');
 
       // Calculate stock difference
@@ -162,7 +162,7 @@ export function EditMovementDialog({ movement, open, onOpenChange, onMovementUpd
       }
 
       // Update movement record
-      await firestoreService.updateMovement(movement.id, {
+      await FirestoreService.updateMovement(movement.id, {
         product_id: formData.product_id,
         type: formData.type,
         quantity: quantity,
@@ -172,7 +172,7 @@ export function EditMovementDialog({ movement, open, onOpenChange, onMovementUpd
       });
 
       // Update product stock
-      await firestoreService.updateProduct(formData.product_id, {
+      await FirestoreService.updateProduct(formData.product_id, {
         current_stock: newStock
       });
 
@@ -242,10 +242,10 @@ export function EditMovementDialog({ movement, open, onOpenChange, onMovementUpd
               </div>
               <div>
                 <DialogTitle className="text-xl font-bold text-slate-800 tracking-tight">
-                  แก้ไขการเคลื่อนไหวสต็อก
+                  แก้ไขการเบิก/การรับพัสดุ
                 </DialogTitle>
                 <DialogDescription className="text-sm text-slate-600 font-medium mt-1">
-                  แก้ไขข้อมูลการเคลื่อนไหวสต็อกในระบบ
+                  แก้ไขข้อมูลการเบิก/การรับพัสดุในระบบ
                 </DialogDescription>
               </div>
             </div>

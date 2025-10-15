@@ -6,6 +6,7 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
+  setDoc,
   query,
   where,
   orderBy,
@@ -236,7 +237,7 @@ export class FirestoreService {
     this.cache.set(key, { data, timestamp: Date.now() });
   }
 
-  static async getProducts(retryCount = 0): Promise<Product[]> {
+  static async getProducts(retryCount = 0, limitCount: number = 100): Promise<Product[]> {
     const maxRetries = 3;
     const retryDelay = 1000; // 1 second
     
@@ -251,11 +252,11 @@ export class FirestoreService {
 
       console.log('🔍 กำลังโหลดข้อมูลสินค้า...');
       
-      // Load all data in parallel
+      // Load all data in parallel with optimized queries
       const [productsSnapshot, categoriesSnapshot, suppliersSnapshot] = await Promise.all([
-        getDocs(collection(db, 'products')),
-        getDocs(collection(db, 'categories')),
-        getDocs(collection(db, 'suppliers'))
+        getDocs(query(collection(db, 'products'), orderBy('created_at', 'desc'), limit(limitCount))),
+        getDocs(query(collection(db, 'categories'), orderBy('created_at', 'desc'), limit(50))),
+        getDocs(query(collection(db, 'suppliers'), orderBy('created_at', 'desc'), limit(50)))
       ]);
 
       // Build lookup maps
@@ -798,10 +799,14 @@ export class FirestoreService {
     }
   }
 
-  static async getMovements(): Promise<Movement[]> {
+  static async getMovements(limitCount: number = 50): Promise<Movement[]> {
     try {
       const movementsRef = collection(db, 'stock_movements');
-      const q = query(movementsRef, orderBy('created_at', 'desc'), limit(100));
+      const q = query(
+        movementsRef, 
+        orderBy('created_at', 'desc'), 
+        limit(limitCount)
+      );
       const snapshot = await getDocs(q);
 
       return snapshot.docs.map(doc => {
@@ -1117,12 +1122,95 @@ export class FirestoreService {
       const accountCodesRef = collection(db, 'accountCodes');
       const querySnapshot = await getDocs(accountCodesRef);
       
-      return querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as AccountCode));
+      if (querySnapshot.empty) {
+        return [];
+      }
+      
+      const accountCodes = querySnapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data
+        } as AccountCode;
+      });
+      
+      return accountCodes;
     } catch (error) {
       console.error('Error getting account codes:', error);
+      throw error;
+    }
+  }
+
+
+
+
+
+  // Create sample account codes for testing
+  static async createSampleAccountCodes(): Promise<void> {
+    try {
+      const sampleAccountCodes = [
+        {
+          code: '1001',
+          name: 'เงินสด',
+          description: 'เงินสดในมือ',
+          category: 'asset',
+          isActive: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system'
+        },
+        {
+          code: '1002',
+          name: 'เงินฝากธนาคาร',
+          description: 'เงินฝากธนาคารออมทรัพย์',
+          category: 'asset',
+          isActive: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system'
+        },
+        {
+          code: '2001',
+          name: 'เจ้าหนี้การค้า',
+          description: 'หนี้สินจากการซื้อสินค้า',
+          category: 'liability',
+          isActive: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system'
+        },
+        {
+          code: '3001',
+          name: 'ทุนจดทะเบียน',
+          description: 'ทุนจดทะเบียนบริษัท',
+          category: 'equity',
+          isActive: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system'
+        },
+        {
+          code: '4001',
+          name: 'รายได้จากการขาย',
+          description: 'รายได้จากการขายสินค้า',
+          category: 'revenue',
+          isActive: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system'
+        },
+        {
+          code: '5001',
+          name: 'ต้นทุนขาย',
+          description: 'ต้นทุนสินค้าที่ขาย',
+          category: 'expense',
+          isActive: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system'
+        }
+      ];
+
+      const accountCodesRef = collection(db, 'accountCodes');
+      for (const accountCode of sampleAccountCodes) {
+        await addDoc(accountCodesRef, accountCode);
+      }
+    } catch (error) {
+      console.error('Error creating sample account codes:', error);
       throw error;
     }
   }
@@ -1166,14 +1254,21 @@ export class FirestoreService {
   }
 
   // Withdrawals
-  static async getWithdrawals(): Promise<Withdrawal[]> {
+  static async getWithdrawals(limitCount: number = 50): Promise<Withdrawal[]> {
     try {
-      const q = query(collection(db, 'withdrawals'), orderBy('created_at', 'desc'));
+      const q = query(
+        collection(db, 'withdrawals'), 
+        orderBy('created_at', 'desc'),
+        limit(limitCount)
+      );
       const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({
+      const withdrawals = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       } as Withdrawal));
+      
+      
+      return withdrawals;
     } catch (error) {
       console.error('Error getting withdrawals:', error);
       throw error;
@@ -1205,14 +1300,31 @@ export class FirestoreService {
   }
 
   // Receipts
-  static async getReceipts(): Promise<Receipt[]> {
+  static async getReceipts(limitCount: number = 50): Promise<Receipt[]> {
     try {
-      const q = query(collection(db, 'receipts'), orderBy('created_at', 'desc'));
+      const q = query(
+        collection(db, 'receipts'), 
+        orderBy('created_at', 'desc'),
+        limit(limitCount)
+      );
       const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({
+      const receipts = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       } as Receipt));
+      
+      console.log('📥 getReceipts result:', {
+        count: receipts.length,
+        receipts: receipts.map(r => ({
+          id: r.id,
+          receipt_no: r.receipt_no,
+          receipt_date: r.receipt_date,
+          created_at: r.created_at,
+          items_count: r.items?.length || 0
+        }))
+      });
+      
+      return receipts;
     } catch (error) {
       console.error('Error getting receipts:', error);
       throw error;
@@ -1221,11 +1333,13 @@ export class FirestoreService {
 
   static async createReceipt(receipt: Omit<Receipt, 'id'>): Promise<void> {
     try {
+      const now = new Date().toISOString();
       await addDoc(collection(db, 'receipts'), {
         ...receipt,
-        created_at: serverTimestamp(),
-        updated_at: serverTimestamp()
+        created_at: now,
+        updated_at: now
       });
+      console.log('✅ Receipt created successfully with timestamp:', now);
     } catch (error) {
       console.error('Error creating receipt:', error);
       throw error;

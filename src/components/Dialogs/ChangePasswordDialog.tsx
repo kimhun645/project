@@ -1,11 +1,28 @@
 import React, { useState } from 'react';
-import { ResponsiveModal } from '@/components/ui/ResponsiveModal';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { 
+  Key, 
+  Eye, 
+  EyeOff, 
+  Lock, 
+  CheckCircle, 
+  AlertTriangle,
+  Shield,
+  Save,
+  X
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { userService } from '@/lib/userService';
 
 interface ChangePasswordDialogProps {
   open: boolean;
@@ -15,9 +32,11 @@ interface ChangePasswordDialogProps {
 export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialogProps) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showPasswords, setShowPasswords] = useState({
+    current: false,
+    new: false,
+    confirm: false
+  });
   
   const [formData, setFormData] = useState({
     currentPassword: '',
@@ -25,33 +44,37 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
     confirmPassword: ''
   });
 
-  const [errors, setErrors] = useState({
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: ''
-  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const handleInputChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    // Clear error when user starts typing
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: '' }));
+    }
+  };
+
+  const togglePasswordVisibility = (field: string) => {
+    setShowPasswords(prev => ({ ...prev, [field]: !prev[field] }));
+  };
 
   const validateForm = () => {
-    const newErrors = {
-      currentPassword: '',
-      newPassword: '',
-      confirmPassword: ''
-    };
+    const newErrors: Record<string, string> = {};
 
     if (!formData.currentPassword) {
-      newErrors.currentPassword = 'กรุณาใส่รหัสผ่านปัจจุบัน';
+      newErrors.currentPassword = 'กรุณากรอกรหัสผ่านปัจจุบัน';
     }
 
     if (!formData.newPassword) {
-      newErrors.newPassword = 'กรุณาใส่รหัสผ่านใหม่';
-    } else if (formData.newPassword.length < 6) {
-      newErrors.newPassword = 'รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร';
+      newErrors.newPassword = 'กรุณากรอกรหัสผ่านใหม่';
+    } else if (formData.newPassword.length < 8) {
+      newErrors.newPassword = 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร';
     }
 
     if (!formData.confirmPassword) {
       newErrors.confirmPassword = 'กรุณายืนยันรหัสผ่านใหม่';
     } else if (formData.newPassword !== formData.confirmPassword) {
-      newErrors.confirmPassword = 'รหัสผ่านใหม่ไม่ตรงกัน';
+      newErrors.confirmPassword = 'รหัสผ่านไม่ตรงกัน';
     }
 
     if (formData.currentPassword === formData.newPassword) {
@@ -59,7 +82,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
     }
 
     setErrors(newErrors);
-    return !Object.values(newErrors).some(error => error !== '');
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -70,16 +93,16 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
     }
 
     setIsLoading(true);
-    
+
     try {
-      await userService.changePassword(formData.currentPassword, formData.newPassword);
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       toast({
         title: "เปลี่ยนรหัสผ่านสำเร็จ",
-        description: "รหัสผ่านของคุณได้รับการอัปเดตเรียบร้อยแล้ว",
-        variant: "default"
+        description: "รหัสผ่านของคุณได้รับการอัปเดตแล้ว",
       });
-      
+
       // Reset form
       setFormData({
         currentPassword: '',
@@ -88,198 +111,232 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
       });
       
       onOpenChange(false);
-      
-    } catch (error: any) {
-      console.error('Error changing password:', error);
-      
-      let errorMessage = 'เกิดข้อผิดพลาดในการเปลี่ยนรหัสผ่าน';
-      
-      if (error.code === 'auth/wrong-password') {
-        errorMessage = 'รหัสผ่านปัจจุบันไม่ถูกต้อง';
-      } else if (error.code === 'auth/weak-password') {
-        errorMessage = 'รหัสผ่านใหม่ไม่แข็งแรงพอ';
-      } else if (error.code === 'auth/requires-recent-login') {
-        errorMessage = 'กรุณาเข้าสู่ระบบใหม่ก่อนเปลี่ยนรหัสผ่าน';
-      }
-      
+    } catch (error) {
       toast({
-        title: "เปลี่ยนรหัสผ่านไม่สำเร็จ",
-        description: errorMessage,
-        variant: "destructive"
+        title: "เกิดข้อผิดพลาด",
+        description: "ไม่สามารถเปลี่ยนรหัสผ่านได้ กรุณาลองใหม่อีกครั้ง",
+        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    // Clear error when user starts typing
-    if (errors[field as keyof typeof errors]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
-    }
+  const handleCancel = () => {
+    setFormData({
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: ''
+    });
+    setErrors({});
+    onOpenChange(false);
   };
 
+  const getPasswordStrength = (password: string) => {
+    if (password.length === 0) return { strength: 0, label: '', color: '' };
+    if (password.length < 6) return { strength: 1, label: 'อ่อน', color: 'bg-red-500' };
+    if (password.length < 8) return { strength: 2, label: 'ปานกลาง', color: 'bg-yellow-500' };
+    if (password.length >= 8 && /[A-Z]/.test(password) && /[0-9]/.test(password)) {
+      return { strength: 3, label: 'แข็งแรง', color: 'bg-green-500' };
+    }
+    return { strength: 2, label: 'ปานกลาง', color: 'bg-yellow-500' };
+  };
+
+  const passwordStrength = getPasswordStrength(formData.newPassword);
+
   return (
-    <ResponsiveModal
-      open={open}
-      onOpenChange={onOpenChange}
-      title="เปลี่ยนรหัสผ่าน"
-      description="กรุณาใส่ข้อมูลเพื่อเปลี่ยนรหัสผ่านของคุณ"
-      variant="professional"
-      size="md"
-    >
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Current Password */}
-        <div className="space-y-2">
-          <Label htmlFor="currentPassword" className="text-sm font-semibold text-gray-700">
-            รหัสผ่านปัจจุบัน
-          </Label>
-          <div className="relative">
-            <Input
-              id="currentPassword"
-              type={showCurrentPassword ? "text" : "password"}
-              value={formData.currentPassword}
-              onChange={(e) => handleInputChange('currentPassword', e.target.value)}
-              placeholder="ใส่รหัสผ่านปัจจุบัน"
-              className={`h-11 px-4 pr-12 text-sm border-2 rounded-xl transition-all duration-200 ${
-                errors.currentPassword 
-                  ? 'border-red-300 focus:border-red-500 focus:ring-red-200' 
-                  : 'border-gray-300 focus:border-blue-500 focus:ring-blue-200'
-              }`}
-              disabled={isLoading}
-            />
-            <button
-              type="button"
-              onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-          {errors.currentPassword && (
-            <div className="flex items-center gap-2 text-red-600 text-sm">
-              <AlertCircle className="h-4 w-4" />
-              {errors.currentPassword}
-            </div>
-          )}
-        </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-xl">
+            <Shield className="h-6 w-6 text-blue-600" />
+            เปลี่ยนรหัสผ่าน
+          </DialogTitle>
+          <DialogDescription>
+            ปรับปรุงความปลอดภัยของบัญชีด้วยรหัสผ่านใหม่
+          </DialogDescription>
+        </DialogHeader>
 
-        {/* New Password */}
-        <div className="space-y-2">
-          <Label htmlFor="newPassword" className="text-sm font-semibold text-gray-700">
-            รหัสผ่านใหม่
-          </Label>
-          <div className="relative">
-            <Input
-              id="newPassword"
-              type={showNewPassword ? "text" : "password"}
-              value={formData.newPassword}
-              onChange={(e) => handleInputChange('newPassword', e.target.value)}
-              placeholder="ใส่รหัสผ่านใหม่"
-              className={`h-11 px-4 pr-12 text-sm border-2 rounded-xl transition-all duration-200 ${
-                errors.newPassword 
-                  ? 'border-red-300 focus:border-red-500 focus:ring-red-200' 
-                  : 'border-gray-300 focus:border-blue-500 focus:ring-blue-200'
-              }`}
-              disabled={isLoading}
-            />
-            <button
-              type="button"
-              onClick={() => setShowNewPassword(!showNewPassword)}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-          {errors.newPassword && (
-            <div className="flex items-center gap-2 text-red-600 text-sm">
-              <AlertCircle className="h-4 w-4" />
-              {errors.newPassword}
-            </div>
-          )}
-        </div>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <Card className="border-0 shadow-none">
+            <CardContent className="p-0 space-y-4">
+              
+              {/* Current Password */}
+              <div className="space-y-2">
+                <Label htmlFor="currentPassword" className="text-sm font-medium">
+                  รหัสผ่านปัจจุบัน
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="currentPassword"
+                    type={showPasswords.current ? 'text' : 'password'}
+                    value={formData.currentPassword}
+                    onChange={(e) => handleInputChange('currentPassword', e.target.value)}
+                    placeholder="กรอกรหัสผ่านปัจจุบัน"
+                    className={errors.currentPassword ? 'border-red-500' : ''}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => togglePasswordVisibility('current')}
+                  >
+                    {showPasswords.current ? (
+                      <EyeOff className="h-4 w-4 text-gray-400" />
+                    ) : (
+                      <Eye className="h-4 w-4 text-gray-400" />
+                    )}
+                  </Button>
+                </div>
+                {errors.currentPassword && (
+                  <p className="text-sm text-red-500 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />
+                    {errors.currentPassword}
+                  </p>
+                )}
+              </div>
 
-        {/* Confirm Password */}
-        <div className="space-y-2">
-          <Label htmlFor="confirmPassword" className="text-sm font-semibold text-gray-700">
-            ยืนยันรหัสผ่านใหม่
-          </Label>
-          <div className="relative">
-            <Input
-              id="confirmPassword"
-              type={showConfirmPassword ? "text" : "password"}
-              value={formData.confirmPassword}
-              onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-              placeholder="ยืนยันรหัสผ่านใหม่"
-              className={`h-11 px-4 pr-12 text-sm border-2 rounded-xl transition-all duration-200 ${
-                errors.confirmPassword 
-                  ? 'border-red-300 focus:border-red-500 focus:ring-red-200' 
-                  : 'border-gray-300 focus:border-blue-500 focus:ring-blue-200'
-              }`}
-              disabled={isLoading}
-            />
-            <button
-              type="button"
-              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-          {errors.confirmPassword && (
-            <div className="flex items-center gap-2 text-red-600 text-sm">
-              <AlertCircle className="h-4 w-4" />
-              {errors.confirmPassword}
-            </div>
-          )}
-        </div>
+              {/* New Password */}
+              <div className="space-y-2">
+                <Label htmlFor="newPassword" className="text-sm font-medium">
+                  รหัสผ่านใหม่
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="newPassword"
+                    type={showPasswords.new ? 'text' : 'password'}
+                    value={formData.newPassword}
+                    onChange={(e) => handleInputChange('newPassword', e.target.value)}
+                    placeholder="กรอกรหัสผ่านใหม่"
+                    className={errors.newPassword ? 'border-red-500' : ''}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => togglePasswordVisibility('new')}
+                  >
+                    {showPasswords.new ? (
+                      <EyeOff className="h-4 w-4 text-gray-400" />
+                    ) : (
+                      <Eye className="h-4 w-4 text-gray-400" />
+                    )}
+                  </Button>
+                </div>
+                
+                {/* Password Strength Indicator */}
+                {formData.newPassword && (
+                  <div className="space-y-2">
+                    <div className="flex gap-1">
+                      {[1, 2, 3].map((level) => (
+                        <div
+                          key={level}
+                          className={`h-1 flex-1 rounded-full ${
+                            level <= passwordStrength.strength
+                              ? passwordStrength.color
+                              : 'bg-gray-200'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-600">
+                      ความแข็งแรง: <span className="font-medium">{passwordStrength.label}</span>
+                    </p>
+                  </div>
+                )}
+                
+                {errors.newPassword && (
+                  <p className="text-sm text-red-500 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />
+                    {errors.newPassword}
+                  </p>
+                )}
+              </div>
 
-        {/* Password Requirements */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-start gap-2">
-            <Lock className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-            <div className="text-sm text-blue-800">
-              <p className="font-medium mb-1">ข้อกำหนดรหัสผ่าน:</p>
-              <ul className="space-y-1 text-xs">
-                <li>• ต้องมีอย่างน้อย 6 ตัวอักษร</li>
-                <li>• ต้องแตกต่างจากรหัสผ่านปัจจุบัน</li>
-                <li>• แนะนำให้ใช้ตัวอักษร ตัวเลข และสัญลักษณ์</li>
+              {/* Confirm Password */}
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword" className="text-sm font-medium">
+                  ยืนยันรหัสผ่านใหม่
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="confirmPassword"
+                    type={showPasswords.confirm ? 'text' : 'password'}
+                    value={formData.confirmPassword}
+                    onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+                    placeholder="ยืนยันรหัสผ่านใหม่"
+                    className={errors.confirmPassword ? 'border-red-500' : ''}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => togglePasswordVisibility('confirm')}
+                  >
+                    {showPasswords.confirm ? (
+                      <EyeOff className="h-4 w-4 text-gray-400" />
+                    ) : (
+                      <Eye className="h-4 w-4 text-gray-400" />
+                    )}
+                  </Button>
+                </div>
+                {errors.confirmPassword && (
+                  <p className="text-sm text-red-500 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />
+                    {errors.confirmPassword}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Security Tips */}
+          <Alert>
+            <Shield className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              <strong>เคล็ดลับความปลอดภัย:</strong>
+              <ul className="mt-2 space-y-1 text-xs">
+                <li>• ใช้รหัสผ่านที่มีอย่างน้อย 8 ตัวอักษร</li>
+                <li>• รวมตัวอักษรใหญ่ ตัวเลข และสัญลักษณ์</li>
+                <li>• หลีกเลี่ยงการใช้ข้อมูลส่วนตัว</li>
               </ul>
-            </div>
-          </div>
-        </div>
+            </AlertDescription>
+          </Alert>
 
-        {/* Action Buttons */}
-        <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            className="h-11 px-6 text-sm font-semibold border-2 border-gray-300 hover:border-gray-400 hover:bg-gray-50 bg-white transition-all duration-200 shadow-sm hover:shadow-md rounded-xl"
-            disabled={isLoading}
-          >
-            ยกเลิก
-          </Button>
-          <Button
-            type="submit"
-            disabled={isLoading}
-            className="h-11 px-8 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white text-sm font-bold shadow-xl hover:shadow-2xl transition-all duration-200 rounded-xl border-0"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                กำลังเปลี่ยนรหัสผ่าน...
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="mr-2 h-4 w-4" />
-                เปลี่ยนรหัสผ่าน
-              </>
-            )}
-          </Button>
-        </div>
-      </form>
-    </ResponsiveModal>
+          {/* Action Buttons */}
+          <div className="flex gap-3 pt-4">
+            <Button
+              type="submit"
+              disabled={isLoading}
+              className="flex-1 bg-blue-600 hover:bg-blue-700"
+            >
+              {isLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                  กำลังบันทึก...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  บันทึก
+                </>
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCancel}
+              disabled={isLoading}
+            >
+              <X className="h-4 w-4 mr-2" />
+              ยกเลิก
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

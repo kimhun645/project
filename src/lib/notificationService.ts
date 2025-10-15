@@ -254,7 +254,7 @@ class NotificationService {
   createMovementAlert(movementType: string, productName: string, quantity: number) {
     return this.addNotification({
       type: 'info',
-      title: 'การเคลื่อนไหวสต็อก',
+      title: 'การเบิก/การรับพัสดุ',
       message: `${movementType} ${productName} จำนวน ${quantity} ชิ้น`,
       actionUrl: '/movements',
       actionText: 'ดูการเคลื่อนไหว'

@@ -30,7 +30,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { firestoreService } from '@/lib/firestoreService';
+import { FirestoreService } from '@/lib/firestoreService';
 import { useBarcodeScanner } from '@/hooks/use-barcode-scanner';
 
 interface ProductForWithdrawal {
@@ -144,7 +144,7 @@ export function WithdrawalDialog({ onWithdrawalAdded }: WithdrawalDialogProps) {
   const fetchProducts = async () => {
     try {
       console.log('🔄 Fetching products...');
-      const data = await firestoreService.getProducts();
+      const data = await FirestoreService.getProducts();
       console.log('📦 Products loaded:', data?.length || 0, 'items');
       console.log('📦 Products with barcodes:', data?.filter(p => p.barcode).length || 0, 'items');
       setProducts(data || []);
@@ -198,7 +198,7 @@ export function WithdrawalDialog({ onWithdrawalAdded }: WithdrawalDialogProps) {
         id: Date.now().toString(),
         product_id: productId,
         product_name: product.name,
-        product_sku: product.sku,
+        product_sku: product.sku || '',
         quantity: 1, // สแกน 1 ครั้ง = 1 ชิ้น
         unit: 'ชิ้น',
         reason: 'ใช้งาน' // ไม่ต้องใส่เหตุผล
@@ -323,13 +323,11 @@ export function WithdrawalDialog({ onWithdrawalAdded }: WithdrawalDialogProps) {
         created_by: 'current_user' // TODO: Get from auth context
       };
       
-      console.log('📝 Creating withdrawal with data:', withdrawalData);
-      await firestoreService.createWithdrawal(withdrawalData);
-      console.log('✅ Withdrawal created successfully');
+      await FirestoreService.createWithdrawal(withdrawalData);
 
       // Update product stocks
       for (const item of withdrawalItems) {
-        const product = await firestoreService.getProduct(item.product_id);
+        const product = await FirestoreService.getProduct(item.product_id);
         if (product) {
           const newStock = (product.current_stock || 0) - item.quantity;
           
@@ -340,7 +338,7 @@ export function WithdrawalDialog({ onWithdrawalAdded }: WithdrawalDialogProps) {
             newStock: newStock
           });
 
-          await firestoreService.updateProduct(item.product_id, {
+          await FirestoreService.updateProduct(item.product_id, {
             current_stock: newStock
           });
           console.log('✅ Stock updated successfully for product:', item.product_id);
