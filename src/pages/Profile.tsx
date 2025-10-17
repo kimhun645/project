@@ -105,12 +105,40 @@ export default function Profile() {
     setIsEditing(true);
   };
 
-  const handleSave = () => {
-    toast({
-      title: "บันทึกสำเร็จ",
-      description: "ข้อมูลส่วนตัวได้รับการอัปเดตแล้ว",
-    });
-    setIsEditing(false);
+  const handleSave = async () => {
+    try {
+      if (!currentUser) {
+        toast({
+          title: "เกิดข้อผิดพลาด",
+          description: "ไม่พบข้อมูลผู้ใช้",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // อัปเดตข้อมูลใน Firestore
+      const { FirestoreService } = await import('@/lib/firestoreService');
+      await FirestoreService.updateUser(currentUser.uid, {
+        displayName: editData.displayName,
+        email: editData.email,
+        phone: editData.phone,
+        department: editData.department,
+        position: editData.position
+      });
+
+      toast({
+        title: "บันทึกสำเร็จ",
+        description: "ข้อมูลส่วนตัวได้รับการอัปเดตแล้ว",
+      });
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      toast({
+        title: "เกิดข้อผิดพลาด",
+        description: "ไม่สามารถบันทึกข้อมูลได้",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleCancel = () => {

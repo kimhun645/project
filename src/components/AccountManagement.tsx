@@ -36,6 +36,8 @@ export function AccountManagement() {
   const [isBulkImportDialogOpen, setIsBulkImportDialogOpen] = useState(false);
   const [selectedAccountCode, setSelectedAccountCode] = useState<AccountCode | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const { toast } = useToast();
 
   // Form states
@@ -77,7 +79,23 @@ export function AccountManagement() {
     }
 
     setFilteredAccountCodes(filtered);
+    setCurrentPage(1); // Reset to first page when filters change
   }, [accountCodes, searchTerm, categoryFilter, statusFilter]);
+
+  // Pagination logic
+  const totalPages = Math.ceil(filteredAccountCodes.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentAccountCodes = filteredAccountCodes.slice(startIndex, endIndex);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (value: string) => {
+    setItemsPerPage(Number(value));
+    setCurrentPage(1);
+  };
 
   const loadAccountCodes = async () => {
     setIsLoading(true);
@@ -497,10 +515,26 @@ export function AccountManagement() {
       {/* Account Codes Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Hash className="h-5 w-5" />
-            รายการรหัสบัญชี ({filteredAccountCodes.length})
-          </CardTitle>
+          <div className="flex justify-between items-center">
+            <CardTitle className="flex items-center gap-2">
+              <Hash className="h-5 w-5" />
+              รายการรหัสบัญชี ({filteredAccountCodes.length})
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="items-per-page" className="text-sm">แสดงต่อหน้า:</Label>
+              <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
+                <SelectTrigger className="w-20">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="5">5</SelectItem>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -508,14 +542,14 @@ export function AccountManagement() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
               <p className="text-gray-500 mt-2">กำลังโหลดข้อมูล...</p>
             </div>
-          ) : filteredAccountCodes.length === 0 ? (
+          ) : currentAccountCodes.length === 0 ? (
             <div className="text-center py-8">
               <Hash className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-500">ไม่พบข้อมูลรหัสบัญชี</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {filteredAccountCodes.map((accountCode) => (
+              {currentAccountCodes.map((accountCode) => (
                 <div key={accountCode.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
                   <div className="flex items-center space-x-4">
                     <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
@@ -606,6 +640,63 @@ export function AccountManagement() {
             </div>
           )}
         </CardContent>
+        
+        {/* Pagination */}
+        {filteredAccountCodes.length > 0 && (
+          <div className="px-6 py-4 border-t bg-gray-50">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-700">
+                แสดง {startIndex + 1} ถึง {Math.min(endIndex, filteredAccountCodes.length)} จาก {filteredAccountCodes.length} รายการ
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                >
+                  ก่อนหน้า
+                </Button>
+                
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={currentPage === pageNum ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => handlePageChange(pageNum)}
+                        className="w-8 h-8 p-0"
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                </div>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                >
+                  ถัดไป
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Edit Dialog */}

@@ -23,6 +23,8 @@ import {
   X
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { userService } from '@/lib/userService';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ChangePasswordDialogProps {
   open: boolean;
@@ -31,6 +33,7 @@ interface ChangePasswordDialogProps {
 
 export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialogProps) {
   const { toast } = useToast();
+  const { signOut } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [showPasswords, setShowPasswords] = useState({
     current: false,
@@ -95,12 +98,12 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
     setIsLoading(true);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // เรียกใช้ userService.changePassword จริง
+      await userService.changePassword(formData.currentPassword, formData.newPassword);
       
       toast({
         title: "เปลี่ยนรหัสผ่านสำเร็จ",
-        description: "รหัสผ่านของคุณได้รับการอัปเดตแล้ว",
+        description: "รหัสผ่านของคุณได้รับการอัปเดตแล้ว กรุณาเข้าสู่ระบบใหม่",
       });
 
       // Reset form
@@ -111,10 +114,29 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
       });
       
       onOpenChange(false);
-    } catch (error) {
+      
+      // Sign out เพื่อให้ผู้ใช้ login ใหม่ด้วยรหัสผ่านใหม่
+      setTimeout(() => {
+        signOut();
+      }, 2000);
+    } catch (error: any) {
+      console.error('Error changing password:', error);
+      
+      let errorMessage = "ไม่สามารถเปลี่ยนรหัสผ่านได้ กรุณาลองใหม่อีกครั้ง";
+      
+      if (error.code === 'auth/wrong-password') {
+        errorMessage = "รหัสผ่านปัจจุบันไม่ถูกต้อง";
+      } else if (error.code === 'auth/weak-password') {
+        errorMessage = "รหัสผ่านใหม่ไม่แข็งแรงพอ";
+      } else if (error.code === 'auth/requires-recent-login') {
+        errorMessage = "กรุณาเข้าสู่ระบบใหม่ก่อนเปลี่ยนรหัสผ่าน";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "เกิดข้อผิดพลาด",
-        description: "ไม่สามารถเปลี่ยนรหัสผ่านได้ กรุณาลองใหม่อีกครั้ง",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {

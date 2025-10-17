@@ -9,6 +9,8 @@ import { AddProductDialog } from '@/components/Dialogs/AddProductDialog';
 import { EditProductDialog } from '@/components/Dialogs/EditProductDialog';
 import { useToast } from '@/hooks/use-toast';
 import { useBarcodeScanner } from '@/hooks/use-barcode-scanner';
+import { useAuth } from '@/contexts/AuthContext';
+import { useStock } from '@/contexts/StockContext';
 import { GlobalSearch } from '@/components/Search/GlobalSearch';
 import {
   ProductsStylePageLayout,
@@ -28,12 +30,12 @@ interface ProductWithCategory extends Product {
 }
 
 export default function Products() {
-  const [products, setProducts] = useState<ProductWithCategory[]>([]);
+  const { toast } = useToast();
+  const { currentUser } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [stockFilter, setStockFilter] = useState('all');
-  const [isLoading, setIsLoading] = useState(true);
-  const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductWithCategory | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -47,8 +49,6 @@ export default function Products() {
   const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
-  
-  const { toast } = useToast();
 
   // Barcode scanner support
   const { scannerDetected, lastScannedCode } = useBarcodeScanner({
@@ -145,8 +145,16 @@ export default function Products() {
 
     try {
       const { FirestoreService } = await import('@/lib/firestoreService');
+      
+      // เตรียม userInfo สำหรับ logging
+      const userInfo = currentUser ? {
+        userId: currentUser.id,
+        userName: currentUser.displayName || 'Unknown User',
+        userRole: 'admin' // หรือดึงจาก currentUser.role ถ้ามี
+      } : undefined;
+      
       for (const productId of selectedProducts) {
-        await FirestoreService.deleteProduct(productId);
+        await FirestoreService.deleteProduct(productId, userInfo);
       }
 
       toast({
@@ -168,12 +176,9 @@ export default function Products() {
 
   const fetchProducts = async () => {
     try {
-      const { FirestoreService } = await import('@/lib/firestoreService');
-      const productsData = await FirestoreService.getProducts();
-      const categoriesData = await FirestoreService.getCategories();
-
-      setProducts(productsData || []);
-      setCategories(categoriesData || []);
+      if (refreshData) {
+        await refreshData();
+      }
     } catch (error) {
       console.error('Error fetching products:', error);
       toast({
@@ -181,8 +186,6 @@ export default function Products() {
         description: "ไม่สามารถโหลดข้อมูลสินค้าได้",
         variant: "destructive",
       });
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -228,7 +231,15 @@ export default function Products() {
 
     try {
       const { FirestoreService } = await import('@/lib/firestoreService');
-      await FirestoreService.deleteProduct(productToDelete.id);
+      
+      // เตรียม userInfo สำหรับ logging
+      const userInfo = currentUser ? {
+        userId: currentUser.id,
+        userName: currentUser.displayName || 'Unknown User',
+        userRole: 'admin' // หรือดึงจาก currentUser.role ถ้ามี
+      } : undefined;
+      
+      await FirestoreService.deleteProduct(productToDelete.id, userInfo);
 
       toast({
         title: "สำเร็จ",
@@ -249,9 +260,11 @@ export default function Products() {
     }
   };
 
-  useEffect(() => {
-    fetchProducts();
-  }, []);
+  // ใช้ข้อมูลจาก StockContext แทนการ fetch เอง
+  const stockContext = useStock();
+  const products = stockContext?.products || [];
+  const categories = stockContext?.categories || [];
+  const refreshData = stockContext?.refreshData;
 
   // Calculate stats
   const totalProducts = products.length;
@@ -532,7 +545,7 @@ export default function Products() {
         product={editingProduct}
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
-        onProductUpdated={fetchProducts}
+        onSuccess={fetchProducts}
       />
     </ProductsStylePageLayout>
   );

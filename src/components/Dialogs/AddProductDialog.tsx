@@ -433,7 +433,7 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
                   เพิ่มสินค้าใหม่
                 </DialogTitle>
                 <DialogDescription className="text-sm text-slate-600 font-medium mt-1">
-                  สร้างสินค้าใหม่ในระบบจัดการคลังสินค้า
+                  สร้างสินค้าใหม่ในระบบจัดการพัสดุ
                 </DialogDescription>
               </div>
             </div>

@@ -14,9 +14,14 @@ import {
   Timestamp,
   serverTimestamp,
   writeBatch,
-  getCountFromServer
+  getCountFromServer,
+  runTransaction
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { LogService } from './logService';
+import { notificationService } from './notificationService';
+import { SecurityService } from './securityService';
+import { PerformanceService } from './performanceService';
 
 export interface Product {
   id: string;
@@ -403,7 +408,7 @@ export class FirestoreService {
     }
   }
 
-  static async createProduct(product: Omit<Product, 'id' | 'created_at' | 'updated_at'>): Promise<Product> {
+  static async createProduct(product: Omit<Product, 'id' | 'created_at' | 'updated_at'>, userInfo?: { userId: string; userName: string; userRole: string }): Promise<Product> {
     try {
       // กรองค่า undefined ออก
       const cleanProduct = Object.fromEntries(
@@ -420,6 +425,33 @@ export class FirestoreService {
       const newProduct = await this.getProduct(docRef.id);
       if (!newProduct) throw new Error('Failed to create product');
 
+      // บันทึก logs ถ้ามี userInfo
+      if (userInfo) {
+        try {
+          await LogService.log(
+            userInfo.userId,
+            userInfo.userName,
+            userInfo.userRole,
+            'CREATE_PRODUCT',
+            `เพิ่มสินค้าใหม่: ${cleanProduct.name}`,
+            'Products',
+            {
+              resourceId: docRef.id,
+              severity: 'success',
+              metadata: {
+                productName: cleanProduct.name,
+                productSku: cleanProduct.sku,
+                productPrice: cleanProduct.unit_price,
+                productStock: cleanProduct.current_stock
+              }
+            }
+          );
+          console.log('📝 Product creation logged successfully');
+        } catch (logError) {
+          console.error('❌ Failed to log product creation:', logError);
+        }
+      }
+
       return newProduct;
     } catch (error) {
       console.error('Error creating product:', error);
@@ -427,7 +459,7 @@ export class FirestoreService {
     }
   }
 
-  static async updateProduct(id: string, product: Partial<Product>, retryCount = 0): Promise<void> {
+  static async updateProduct(id: string, product: Partial<Product>, retryCount = 0, userInfo?: { userId: string; userName: string; userRole: string }): Promise<void> {
     const maxRetries = 3;
     const retryDelay = 1000; // 1 second
     
@@ -449,6 +481,36 @@ export class FirestoreService {
       console.log('🔄 Updating product with clean data:', id, cleanProduct);
       await updateDoc(docRef, cleanProduct);
       console.log('✅ Product updated successfully:', id);
+
+      // บันทึก logs ถ้ามี userInfo
+      if (userInfo) {
+        try {
+          // ดึงข้อมูลสินค้าเพื่อบันทึกชื่อใน logs
+          const productSnap = await getDoc(docRef);
+          const productData = productSnap.data();
+          const productName = productData?.name || 'Unknown Product';
+
+          await LogService.log(
+            userInfo.userId,
+            userInfo.userName,
+            userInfo.userRole,
+            'UPDATE_PRODUCT',
+            `แก้ไขสินค้า: ${productName}`,
+            'Products',
+            {
+              resourceId: id,
+              severity: 'info',
+              metadata: {
+                productName: productName,
+                updatedFields: Object.keys(cleanProduct).filter(key => key !== 'updated_at')
+              }
+            }
+          );
+          console.log('📝 Product update logged successfully');
+        } catch (logError) {
+          console.error('❌ Failed to log product update:', logError);
+        }
+      }
     } catch (error: any) {
       console.error('❌ Error updating product:', error);
       console.error('❌ Error code:', error.code);
@@ -476,13 +538,55 @@ export class FirestoreService {
     }
   }
 
-  static async deleteProduct(id: string): Promise<void> {
+  static async deleteProduct(id: string, userInfo?: { userId: string; userName: string; userRole: string }): Promise<void> {
     try {
       if (!id) {
         throw new Error('Product ID is required');
       }
-      const docRef = doc(db, 'products', id);
-      await deleteDoc(docRef);
+      
+      // ดึงข้อมูลสินค้าก่อนลบเพื่อบันทึก logs
+      const productRef = doc(db, 'products', id);
+      const productSnap = await getDoc(productRef);
+      
+      if (!productSnap.exists()) {
+        throw new Error('Product not found');
+      }
+      
+      const productData = productSnap.data();
+      const productName = productData.name || 'Unknown Product';
+      
+      // ลบสินค้า
+      await deleteDoc(productRef);
+      
+      // บันทึก logs ถ้ามี userInfo
+      if (userInfo) {
+        try {
+          await LogService.log(
+            userInfo.userId,
+            userInfo.userName,
+            userInfo.userRole,
+            'DELETE_PRODUCT',
+            `ลบสินค้า: ${productName}`,
+            'Products',
+            {
+              resourceId: id,
+              severity: 'info',
+              metadata: {
+                productName: productName,
+                productSku: productData.sku,
+                productPrice: productData.unit_price,
+                productStock: productData.current_stock
+              }
+            }
+          );
+          console.log('📝 Product deletion logged successfully');
+        } catch (logError) {
+          console.error('❌ Failed to log product deletion:', logError);
+          // ไม่ throw error เพื่อไม่ให้การลบสินค้าล้มเหลว
+        }
+      }
+      
+      console.log(`✅ Product deleted successfully: ${productName}`);
     } catch (error) {
       console.error('Error deleting product:', error);
       throw error;
@@ -557,7 +661,103 @@ export class FirestoreService {
     }
   }
 
-  static async deleteUser(userId: string): Promise<void> {
+  static async updateUser(userId: string, userData: Partial<User>, adminInfo?: { userId: string; userName: string; userRole: string }): Promise<void> {
+    try {
+      console.log('🔄 กำลังอัปเดตผู้ใช้ใน Firestore:', userId, userData);
+      
+      const userDocRef = doc(db, 'users', userId);
+      const updateData = {
+        ...userData,
+        updatedAt: new Date().toISOString()
+      };
+      
+      await updateDoc(userDocRef, updateData);
+      console.log('✅ อัปเดตผู้ใช้ใน Firestore สำเร็จ');
+
+      // บันทึก logs ถ้ามี adminInfo
+      if (adminInfo) {
+        try {
+          // ดึงข้อมูลผู้ใช้เพื่อบันทึกชื่อใน logs
+          const userSnap = await getDoc(userDocRef);
+          const userData = userSnap.data();
+          const userName = userData?.displayName || userData?.email || 'Unknown User';
+
+          await LogService.log(
+            adminInfo.userId,
+            adminInfo.userName,
+            adminInfo.userRole,
+            'UPDATE_USER',
+            `แก้ไขผู้ใช้: ${userName}`,
+            'Users',
+            {
+              resourceId: userId,
+              severity: 'info',
+              metadata: {
+                userName: userName,
+                updatedFields: Object.keys(userData),
+                targetUserId: userId
+              }
+            }
+          );
+          console.log('📝 User update logged successfully');
+        } catch (logError) {
+          console.error('❌ Failed to log user update:', logError);
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ ข้อผิดพลาดในการอัปเดตผู้ใช้:', error);
+      throw new Error(`ไม่สามารถอัปเดตผู้ใช้ได้: ${error.message}`);
+    }
+  }
+
+  static async addUser(userData: Omit<User, 'id' | 'createdAt' | 'updatedAt'>, adminInfo?: { userId: string; userName: string; userRole: string }): Promise<void> {
+    try {
+      console.log('➕ กำลังเพิ่มผู้ใช้ใหม่ใน Firestore:', userData);
+      
+      const usersRef = collection(db, 'users');
+      const now = new Date().toISOString();
+      
+      const docRef = await addDoc(usersRef, {
+        ...userData,
+        createdAt: now,
+        updatedAt: now
+      });
+      
+      console.log('✅ เพิ่มผู้ใช้ใหม่ใน Firestore สำเร็จ');
+
+      // บันทึก logs ถ้ามี adminInfo
+      if (adminInfo) {
+        try {
+          await LogService.log(
+            adminInfo.userId,
+            adminInfo.userName,
+            adminInfo.userRole,
+            'CREATE_USER',
+            `เพิ่มผู้ใช้ใหม่: ${userData.displayName || userData.email}`,
+            'Users',
+            {
+              resourceId: docRef.id,
+              severity: 'success',
+              metadata: {
+                userName: userData.displayName || userData.email,
+                userEmail: userData.email,
+                userRole: userData.role,
+                targetUserId: docRef.id
+              }
+            }
+          );
+          console.log('📝 User creation logged successfully');
+        } catch (logError) {
+          console.error('❌ Failed to log user creation:', logError);
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ ข้อผิดพลาดในการเพิ่มผู้ใช้:', error);
+      throw new Error(`ไม่สามารถเพิ่มผู้ใช้ได้: ${error.message}`);
+    }
+  }
+
+  static async deleteUser(userId: string, adminInfo?: { userId: string; userName: string; userRole: string }): Promise<void> {
     try {
       console.log('🗑️ กำลังลบผู้ใช้จาก Firestore ด้วย firestoreService:', userId);
       console.log('🔍 ตรวจสอบ userId:', userId);
@@ -566,8 +766,40 @@ export class FirestoreService {
       const userDocRef = doc(db, 'users', userId);
       console.log('🔍 ตรวจสอบ userDocRef:', userDocRef);
       
+      // ดึงข้อมูลผู้ใช้ก่อนลบเพื่อบันทึก logs
+      const userSnap = await getDoc(userDocRef);
+      const userData = userSnap.data();
+      const userName = userData?.displayName || userData?.email || 'Unknown User';
+
       await deleteDoc(userDocRef);
       console.log('✅ ลบผู้ใช้จาก Firestore สำเร็จ');
+
+      // บันทึก logs ถ้ามี adminInfo
+      if (adminInfo) {
+        try {
+          await LogService.log(
+            adminInfo.userId,
+            adminInfo.userName,
+            adminInfo.userRole,
+            'DELETE_USER',
+            `ลบผู้ใช้: ${userName}`,
+            'Users',
+            {
+              resourceId: userId,
+              severity: 'warning',
+              metadata: {
+                userName: userName,
+                userEmail: userData?.email,
+                userRole: userData?.role,
+                targetUserId: userId
+              }
+            }
+          );
+          console.log('📝 User deletion logged successfully');
+        } catch (logError) {
+          console.error('❌ Failed to log user deletion:', logError);
+        }
+      }
     } catch (error: any) {
       console.error('❌ ข้อผิดพลาดในการลบผู้ใช้จาก Firestore:', error);
       console.error('❌ Error code:', error.code);
@@ -577,7 +809,7 @@ export class FirestoreService {
   }
 
 
-  static async createBudgetRequest(requestData: any): Promise<any> {
+  static async createBudgetRequest(requestData: any, userInfo?: { userId: string; userName: string; userRole: string }): Promise<any> {
     try {
       console.log('🔍 กำลังสร้างคำขอใช้งบประมาณใน Firestore...');
       const budgetRequestsRef = collection(db, 'budgetRequests');
@@ -593,17 +825,47 @@ export class FirestoreService {
       const docRef = await addDoc(budgetRequestsRef, requestDoc);
       console.log('✅ สร้างคำขอใช้งบประมาณสำเร็จ:', docRef.id);
       
-      return {
+      const newRequest = {
         id: docRef.id,
         ...requestDoc
       };
+
+      // บันทึก logs ถ้ามี userInfo
+      if (userInfo) {
+        try {
+          await LogService.log(
+            userInfo.userId,
+            userInfo.userName,
+            userInfo.userRole,
+            'CREATE_BUDGET_REQUEST',
+            `สร้างคำขอใช้งบประมาณ: ${requestData.request_no}`,
+            'Budget Requests',
+            {
+              resourceId: docRef.id,
+              severity: 'info',
+              metadata: {
+                requestNo: requestData.request_no,
+                requester: requestData.requester,
+                amount: requestData.amount,
+                accountCode: requestData.account_code,
+                accountName: requestData.account_name
+              }
+            }
+          );
+          console.log('📝 Budget request creation logged successfully');
+        } catch (logError) {
+          console.error('❌ Failed to log budget request creation:', logError);
+        }
+      }
+
+      return newRequest;
     } catch (error) {
       console.error('❌ ข้อผิดพลาดในการสร้างคำขอใช้งบประมาณ:', error);
       throw error;
     }
   }
 
-  static async createCategory(category: Omit<Category, 'id' | 'created_at' | 'updated_at'>): Promise<Category> {
+  static async createCategory(category: Omit<Category, 'id' | 'created_at' | 'updated_at'>, userInfo?: { userId: string; userName: string; userRole: string }): Promise<Category> {
     try {
       const categoriesRef = collection(db, 'categories');
       const now = new Date().toISOString();
@@ -628,6 +890,32 @@ export class FirestoreService {
         updated_at: now
       };
 
+      // บันทึก logs ถ้ามี userInfo
+      if (userInfo) {
+        try {
+          await LogService.log(
+            userInfo.userId,
+            userInfo.userName,
+            userInfo.userRole,
+            'CREATE_CATEGORY',
+            `เพิ่มหมวดหมู่ใหม่: ${categoryData.name}`,
+            'Categories',
+            {
+              resourceId: docRef.id,
+              severity: 'success',
+              metadata: {
+                categoryName: categoryData.name,
+                categoryDescription: categoryData.description,
+                isMedicine: categoryData.is_medicine
+              }
+            }
+          );
+          console.log('📝 Category creation logged successfully');
+        } catch (logError) {
+          console.error('❌ Failed to log category creation:', logError);
+        }
+      }
+
       return newCategory;
     } catch (error) {
       console.error('Error creating category:', error);
@@ -635,7 +923,7 @@ export class FirestoreService {
     }
   }
 
-  static async updateCategory(id: string, category: Partial<Category>): Promise<void> {
+  static async updateCategory(id: string, category: Partial<Category>, userInfo?: { userId: string; userName: string; userRole: string }): Promise<void> {
     try {
       const docRef = doc(db, 'categories', id);
       
@@ -649,6 +937,36 @@ export class FirestoreService {
       if (category.is_medicine !== undefined) updateData.is_medicine = category.is_medicine;
       
       await updateDoc(docRef, updateData);
+
+      // บันทึก logs ถ้ามี userInfo
+      if (userInfo) {
+        try {
+          // ดึงข้อมูลหมวดหมู่เพื่อบันทึกชื่อใน logs
+          const categorySnap = await getDoc(docRef);
+          const categoryData = categorySnap.data();
+          const categoryName = categoryData?.name || 'Unknown Category';
+
+          await LogService.log(
+            userInfo.userId,
+            userInfo.userName,
+            userInfo.userRole,
+            'UPDATE_CATEGORY',
+            `แก้ไขหมวดหมู่: ${categoryName}`,
+            'Categories',
+            {
+              resourceId: id,
+              severity: 'info',
+              metadata: {
+                categoryName: categoryName,
+                updatedFields: Object.keys(updateData)
+              }
+            }
+          );
+          console.log('📝 Category update logged successfully');
+        } catch (logError) {
+          console.error('❌ Failed to log category update:', logError);
+        }
+      }
     } catch (error) {
       console.error('Error updating category:', error);
       throw error;
@@ -689,7 +1007,7 @@ export class FirestoreService {
     }
   }
 
-  static async createSupplier(supplier: Omit<Supplier, 'id' | 'created_at' | 'updated_at'>): Promise<Supplier> {
+  static async createSupplier(supplier: Omit<Supplier, 'id' | 'created_at' | 'updated_at'>, userInfo?: { userId: string; userName: string; userRole: string }): Promise<Supplier> {
     try {
       console.log('🔍 FirestoreService.createSupplier - เริ่มต้น:', supplier);
       console.log('🔗 FirestoreService.createSupplier - db instance:', db);
@@ -720,6 +1038,34 @@ export class FirestoreService {
       };
       
       console.log('📋 FirestoreService.createSupplier - ส่งคืนข้อมูล:', newSupplier);
+
+      // บันทึก logs ถ้ามี userInfo
+      if (userInfo) {
+        try {
+          await LogService.log(
+            userInfo.userId,
+            userInfo.userName,
+            userInfo.userRole,
+            'CREATE_SUPPLIER',
+            `เพิ่มผู้จำหน่ายใหม่: ${supplier.name}`,
+            'Suppliers',
+            {
+              resourceId: docRef.id,
+              severity: 'success',
+              metadata: {
+                supplierName: supplier.name,
+                supplierEmail: supplier.email,
+                supplierPhone: supplier.phone,
+                supplierAddress: supplier.address
+              }
+            }
+          );
+          console.log('📝 Supplier creation logged successfully');
+        } catch (logError) {
+          console.error('❌ Failed to log supplier creation:', logError);
+        }
+      }
+
       return newSupplier;
     } catch (error) {
       console.error('❌ FirestoreService.createSupplier - ข้อผิดพลาด:', error);
@@ -776,23 +1122,85 @@ export class FirestoreService {
     }
   }
 
-  static async updateSupplier(id: string, supplier: Partial<Supplier>): Promise<void> {
+  static async updateSupplier(id: string, supplier: Partial<Supplier>, userInfo?: { userId: string; userName: string; userRole: string }): Promise<void> {
     try {
       const docRef = doc(db, 'suppliers', id);
       await updateDoc(docRef, {
         ...supplier,
         updated_at: serverTimestamp()
       });
+
+      // บันทึก logs ถ้ามี userInfo
+      if (userInfo) {
+        try {
+          // ดึงข้อมูลผู้จำหน่ายเพื่อบันทึกชื่อใน logs
+          const supplierSnap = await getDoc(docRef);
+          const supplierData = supplierSnap.data();
+          const supplierName = supplierData?.name || 'Unknown Supplier';
+
+          await LogService.log(
+            userInfo.userId,
+            userInfo.userName,
+            userInfo.userRole,
+            'UPDATE_SUPPLIER',
+            `แก้ไขผู้จำหน่าย: ${supplierName}`,
+            'Suppliers',
+            {
+              resourceId: id,
+              severity: 'info',
+              metadata: {
+                supplierName: supplierName,
+                updatedFields: Object.keys(supplier)
+              }
+            }
+          );
+          console.log('📝 Supplier update logged successfully');
+        } catch (logError) {
+          console.error('❌ Failed to log supplier update:', logError);
+        }
+      }
     } catch (error) {
       console.error('Error updating supplier:', error);
       throw error;
     }
   }
 
-  static async deleteSupplier(id: string): Promise<void> {
+  static async deleteSupplier(id: string, userInfo?: { userId: string; userName: string; userRole: string }): Promise<void> {
     try {
       const docRef = doc(db, 'suppliers', id);
+      
+      // ดึงข้อมูลผู้จำหน่ายก่อนลบเพื่อบันทึก logs
+      const supplierSnap = await getDoc(docRef);
+      const supplierData = supplierSnap.data();
+      const supplierName = supplierData?.name || 'Unknown Supplier';
+      
       await deleteDoc(docRef);
+
+      // บันทึก logs ถ้ามี userInfo
+      if (userInfo) {
+        try {
+          await LogService.log(
+            userInfo.userId,
+            userInfo.userName,
+            userInfo.userRole,
+            'DELETE_SUPPLIER',
+            `ลบผู้จำหน่าย: ${supplierName}`,
+            'Suppliers',
+            {
+              resourceId: id,
+              severity: 'info',
+              metadata: {
+                supplierName: supplierName,
+                supplierEmail: supplierData?.email,
+                supplierPhone: supplierData?.phone
+              }
+            }
+          );
+          console.log('📝 Supplier deletion logged successfully');
+        } catch (logError) {
+          console.error('❌ Failed to log supplier deletion:', logError);
+        }
+      }
     } catch (error) {
       console.error('Error deleting supplier:', error);
       throw error;
@@ -831,7 +1239,7 @@ export class FirestoreService {
     }
   }
 
-  static async createMovement(movement: Omit<Movement, 'id' | 'created_at' | 'updated_at'>): Promise<Movement> {
+  static async createMovement(movement: Omit<Movement, 'id' | 'created_at' | 'updated_at'>, userInfo?: { userId: string; userName: string; userRole: string }): Promise<Movement> {
     try {
       const movementsRef = collection(db, 'stock_movements');
       const docRef = await addDoc(movementsRef, {
@@ -847,6 +1255,34 @@ export class FirestoreService {
         updated_at: new Date().toISOString()
       };
 
+      // บันทึก logs ถ้ามี userInfo
+      if (userInfo) {
+        try {
+          await LogService.log(
+            userInfo.userId,
+            userInfo.userName,
+            userInfo.userRole,
+            'CREATE_MOVEMENT',
+            `เพิ่มการเคลื่อนไหวสต็อก: ${movement.type} - ${movement.quantity} ชิ้น`,
+            'Stock Movements',
+            {
+              resourceId: docRef.id,
+              severity: 'info',
+              metadata: {
+                movementType: movement.type,
+                quantity: movement.quantity,
+                productId: movement.product_id,
+                reason: movement.reason,
+                reference: movement.reference
+              }
+            }
+          );
+          console.log('📝 Movement creation logged successfully');
+        } catch (logError) {
+          console.error('❌ Failed to log movement creation:', logError);
+        }
+      }
+
       return newMovement;
     } catch (error) {
       console.error('Error creating movement:', error);
@@ -854,16 +1290,75 @@ export class FirestoreService {
     }
   }
 
-  static async deleteMovement(movementId: string): Promise<void> {
+  static async deleteMovement(movementId: string, userInfo?: { userId: string; userName: string; userRole: string }): Promise<void> {
     try {
       const movementRef = doc(db, 'stock_movements', movementId);
+      
+      // ดึงข้อมูลการเคลื่อนไหวก่อนลบเพื่อบันทึก logs
+      const movementSnap = await getDoc(movementRef);
+      const movementData = movementSnap.data();
+      const movementType = movementData?.type || 'Unknown Type';
+      const quantity = movementData?.quantity || 0;
+      
       await deleteDoc(movementRef);
       console.log('✅ Movement deleted successfully:', movementId);
       
       // Clear cache to ensure fresh data
       this.cache.delete('movements');
+
+      // บันทึก logs ถ้ามี userInfo
+      if (userInfo) {
+        try {
+          await LogService.log(
+            userInfo.userId,
+            userInfo.userName,
+            userInfo.userRole,
+            'DELETE_MOVEMENT',
+            `ลบการเคลื่อนไหวสต็อก: ${movementType} - ${quantity} ชิ้น`,
+            'Stock Movements',
+            {
+              resourceId: movementId,
+              severity: 'warning',
+              metadata: {
+                movementType: movementType,
+                quantity: quantity,
+                productId: movementData?.product_id,
+                reason: movementData?.reason
+              }
+            }
+          );
+          console.log('📝 Movement deletion logged successfully');
+        } catch (logError) {
+          console.error('❌ Failed to log movement deletion:', logError);
+        }
+      }
     } catch (error) {
       console.error('Error deleting movement:', error);
+      throw error;
+    }
+  }
+
+  // Transactional stock update to avoid race conditions
+  static async updateProductStockTransactional(productId: string, deltaQuantity: number): Promise<void> {
+    try {
+      const productRef = doc(db, 'products', productId);
+      await runTransaction(db, async (transaction) => {
+        const productSnap = await transaction.get(productRef);
+        if (!productSnap.exists()) {
+          throw new Error('ไม่พบสินค้าเพื่อปรับสต็อก');
+        }
+        const current = (productSnap.data().current_stock || 0) as number;
+        const next = current + deltaQuantity;
+        if (next < 0) {
+          throw new Error('สต็อกไม่เพียงพอสำหรับการเบิก');
+        }
+        transaction.update(productRef, {
+          current_stock: next,
+          updated_at: serverTimestamp()
+        });
+      });
+    } catch (error) {
+      console.error('❌ Transactional stock update failed:', error);
       throw error;
     }
   }
@@ -997,7 +1492,7 @@ export class FirestoreService {
     }
   }
 
-  static async updateBudgetRequestStatus(id: string, status: 'PENDING' | 'APPROVED' | 'REJECTED', approverName?: string): Promise<void> {
+  static async updateBudgetRequestStatus(id: string, status: 'PENDING' | 'APPROVED' | 'REJECTED', approverName?: string, userInfo?: { userId: string; userName: string; userRole: string }): Promise<void> {
     try {
       console.log('🔍 กำลังอัพเดทสถานะคำขอใช้งบประมาณ ID:', id, 'สถานะ:', status);
       
@@ -1019,6 +1514,48 @@ export class FirestoreService {
       await updateDoc(docRef, updateData);
       
       console.log('✅ อัพเดทสถานะคำขอใช้งบประมาณสำเร็จ:', id, 'สถานะ:', status);
+
+      // บันทึก logs ถ้ามี userInfo
+      if (userInfo) {
+        try {
+          // ดึงข้อมูลคำขอเพื่อบันทึกใน logs
+          const requestSnap = await getDoc(docRef);
+          const requestData = requestSnap.data();
+          const requestNo = requestData?.request_no || 'Unknown Request';
+          const requester = requestData?.requester || 'Unknown Requester';
+          const amount = requestData?.amount || 0;
+
+          const action = status === 'APPROVED' ? 'APPROVE_BUDGET_REQUEST' : 'REJECT_BUDGET_REQUEST';
+          const description = status === 'APPROVED' 
+            ? `อนุมัติคำขอใช้งบประมาณ: ${requestNo}` 
+            : `ปฏิเสธคำขอใช้งบประมาณ: ${requestNo}`;
+          const severity = status === 'APPROVED' ? 'success' : 'warning';
+
+          await LogService.log(
+            userInfo.userId,
+            userInfo.userName,
+            userInfo.userRole,
+            action,
+            description,
+            'Budget Requests',
+            {
+              resourceId: id,
+              severity: severity,
+              metadata: {
+                requestNo: requestNo,
+                requester: requester,
+                amount: amount,
+                approverName: approverName || 'ผู้อนุมัติ',
+                previousStatus: requestData?.status,
+                newStatus: status
+              }
+            }
+          );
+          console.log('📝 Budget request status change logged successfully');
+        } catch (logError) {
+          console.error('❌ Failed to log budget request status change:', logError);
+        }
+      }
     } catch (error) {
       console.error('❌ ข้อผิดพลาดในการอัพเดทสถานะคำขอใช้งบประมาณ:', error);
       throw error;
@@ -1145,6 +1682,227 @@ export class FirestoreService {
 
 
 
+  // Role Management
+  static async getRoles(): Promise<any[]> {
+    try {
+      const rolesRef = collection(db, 'roles');
+      const querySnapshot = await getDocs(rolesRef);
+      
+      if (querySnapshot.empty) {
+        return [];
+      }
+      
+      const roles = querySnapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data
+        };
+      });
+      
+      return roles;
+    } catch (error) {
+      console.error('Error getting roles:', error);
+      throw error;
+    }
+  }
+
+  static async addRole(roleData: any): Promise<void> {
+    try {
+      console.log('➕ กำลังเพิ่มบทบาทใหม่ใน Firestore:', roleData);
+      
+      const rolesRef = collection(db, 'roles');
+      const now = new Date().toISOString();
+      
+      await addDoc(rolesRef, {
+        ...roleData,
+        createdAt: now,
+        updatedAt: now
+      });
+      
+      console.log('✅ เพิ่มบทบาทใหม่ใน Firestore สำเร็จ');
+    } catch (error: any) {
+      console.error('❌ ข้อผิดพลาดในการเพิ่มบทบาท:', error);
+      throw new Error(`ไม่สามารถเพิ่มบทบาทได้: ${error.message}`);
+    }
+  }
+
+  static async updateRole(roleId: string, roleData: any): Promise<void> {
+    try {
+      console.log('🔄 กำลังอัปเดตบทบาทใน Firestore:', roleId, roleData);
+      
+      const roleDocRef = doc(db, 'roles', roleId);
+      const updateData = {
+        ...roleData,
+        updatedAt: new Date().toISOString()
+      };
+      
+      await updateDoc(roleDocRef, updateData);
+      console.log('✅ อัปเดตบทบาทใน Firestore สำเร็จ');
+    } catch (error: any) {
+      console.error('❌ ข้อผิดพลาดในการอัปเดตบทบาท:', error);
+      throw new Error(`ไม่สามารถอัปเดตบทบาทได้: ${error.message}`);
+    }
+  }
+
+  static async deleteRole(roleId: string): Promise<void> {
+    try {
+      console.log('🗑️ กำลังลบบทบาทจาก Firestore:', roleId);
+      
+      const roleDocRef = doc(db, 'roles', roleId);
+      await deleteDoc(roleDocRef);
+      
+      console.log('✅ ลบบทบาทจาก Firestore สำเร็จ');
+    } catch (error: any) {
+      console.error('❌ ข้อผิดพลาดในการลบบทบาท:', error);
+      throw new Error(`ไม่สามารถลบบทบาทได้: ${error.message}`);
+    }
+  }
+
+  // Add methods for backup/restore functionality
+  static async addProduct(productData: any): Promise<void> {
+    try {
+      console.log('➕ กำลังเพิ่มสินค้าใหม่ใน Firestore:', productData);
+      
+      const productsRef = collection(db, 'products');
+      const now = new Date().toISOString();
+      
+      await addDoc(productsRef, {
+        ...productData,
+        createdAt: now,
+        updatedAt: now
+      });
+      
+      // Check for low stock alert
+      if (productData.current_stock <= productData.min_stock) {
+        notificationService.showLowStockAlert(
+          productData.name,
+          productData.current_stock,
+          productData.min_stock
+        );
+      }
+      
+      // Log security event
+      SecurityService.logAuditEvent(
+        'system',
+        'System',
+        'system',
+        'create',
+        'product',
+        undefined,
+        `เพิ่มสินค้าใหม่: ${productData.name}`,
+        'unknown',
+        'unknown'
+      );
+      
+      console.log('✅ เพิ่มสินค้าใหม่ใน Firestore สำเร็จ');
+    } catch (error: any) {
+      console.error('❌ ข้อผิดพลาดในการเพิ่มสินค้า:', error);
+      SecurityService.logSecurityEvent('data_modification', 'system', `Failed to add product: ${error.message}`, 'high');
+      throw new Error(`ไม่สามารถเพิ่มสินค้าได้: ${error.message}`);
+    }
+  }
+
+  static async addCategory(categoryData: any): Promise<void> {
+    try {
+      console.log('➕ กำลังเพิ่มหมวดหมู่ใหม่ใน Firestore:', categoryData);
+      
+      const categoriesRef = collection(db, 'categories');
+      const now = new Date().toISOString();
+      
+      await addDoc(categoriesRef, {
+        ...categoryData,
+        createdAt: now,
+        updatedAt: now
+      });
+      
+      console.log('✅ เพิ่มหมวดหมู่ใหม่ใน Firestore สำเร็จ');
+    } catch (error: any) {
+      console.error('❌ ข้อผิดพลาดในการเพิ่มหมวดหมู่:', error);
+      throw new Error(`ไม่สามารถเพิ่มหมวดหมู่ได้: ${error.message}`);
+    }
+  }
+
+  static async addSupplier(supplierData: any): Promise<void> {
+    try {
+      console.log('➕ กำลังเพิ่มผู้จำหน่ายใหม่ใน Firestore:', supplierData);
+      
+      const suppliersRef = collection(db, 'suppliers');
+      const now = new Date().toISOString();
+      
+      await addDoc(suppliersRef, {
+        ...supplierData,
+        createdAt: now,
+        updatedAt: now
+      });
+      
+      console.log('✅ เพิ่มผู้จำหน่ายใหม่ใน Firestore สำเร็จ');
+    } catch (error: any) {
+      console.error('❌ ข้อผิดพลาดในการเพิ่มผู้จำหน่าย:', error);
+      throw new Error(`ไม่สามารถเพิ่มผู้จำหน่ายได้: ${error.message}`);
+    }
+  }
+
+  static async addMovement(movementData: any): Promise<void> {
+    try {
+      console.log('➕ กำลังเพิ่มการเคลื่อนไหวใหม่ใน Firestore:', movementData);
+      
+      const movementsRef = collection(db, 'movements');
+      const now = new Date().toISOString();
+      
+      await addDoc(movementsRef, {
+        ...movementData,
+        createdAt: now,
+        updatedAt: now
+      });
+      
+      console.log('✅ เพิ่มการเคลื่อนไหวใหม่ใน Firestore สำเร็จ');
+    } catch (error: any) {
+      console.error('❌ ข้อผิดพลาดในการเพิ่มการเคลื่อนไหว:', error);
+      throw new Error(`ไม่สามารถเพิ่มการเคลื่อนไหวได้: ${error.message}`);
+    }
+  }
+
+  static async addReceipt(receiptData: any): Promise<void> {
+    try {
+      console.log('➕ กำลังเพิ่มใบรับใหม่ใน Firestore:', receiptData);
+      
+      const receiptsRef = collection(db, 'receipts');
+      const now = new Date().toISOString();
+      
+      await addDoc(receiptsRef, {
+        ...receiptData,
+        createdAt: now,
+        updatedAt: now
+      });
+      
+      console.log('✅ เพิ่มใบรับใหม่ใน Firestore สำเร็จ');
+    } catch (error: any) {
+      console.error('❌ ข้อผิดพลาดในการเพิ่มใบรับ:', error);
+      throw new Error(`ไม่สามารถเพิ่มใบรับได้: ${error.message}`);
+    }
+  }
+
+  static async addWithdrawal(withdrawalData: any): Promise<void> {
+    try {
+      console.log('➕ กำลังเพิ่มใบเบิกใหม่ใน Firestore:', withdrawalData);
+      
+      const withdrawalsRef = collection(db, 'withdrawals');
+      const now = new Date().toISOString();
+      
+      await addDoc(withdrawalsRef, {
+        ...withdrawalData,
+        createdAt: now,
+        updatedAt: now
+      });
+      
+      console.log('✅ เพิ่มใบเบิกใหม่ใน Firestore สำเร็จ');
+    } catch (error: any) {
+      console.error('❌ ข้อผิดพลาดในการเพิ่มใบเบิก:', error);
+      throw new Error(`ไม่สามารถเพิ่มใบเบิกได้: ${error.message}`);
+    }
+  }
+
   // Create sample account codes for testing
   static async createSampleAccountCodes(): Promise<void> {
     try {
@@ -1253,6 +2011,24 @@ export class FirestoreService {
     }
   }
 
+  static async bulkAddAccountCodes(accountCodes: Omit<AccountCode, 'id'>[]): Promise<void> {
+    try {
+      const batch = writeBatch(db);
+      const accountCodesRef = collection(db, 'accountCodes');
+      
+      accountCodes.forEach(accountCode => {
+        const docRef = doc(accountCodesRef);
+        batch.set(docRef, accountCode);
+      });
+      
+      await batch.commit();
+      console.log(`✅ Bulk added ${accountCodes.length} account codes successfully`);
+    } catch (error) {
+      console.error('Error bulk adding account codes:', error);
+      throw error;
+    }
+  }
+
   // Withdrawals
   static async getWithdrawals(limitCount: number = 50): Promise<Withdrawal[]> {
     try {
@@ -1354,6 +2130,167 @@ export class FirestoreService {
     } catch (error) {
       console.error('Error deleting receipt:', error);
       throw error;
+    }
+  }
+
+  // Logging methods
+  static async logProductAction(
+    action: 'CREATE' | 'UPDATE' | 'DELETE',
+    productId: string,
+    productName: string,
+    userInfo: { userId: string; userName: string; userRole: string }
+  ): Promise<void> {
+    try {
+      if (action === 'CREATE') {
+        await LogService.logCreate(
+          userInfo.userId,
+          userInfo.userName,
+          userInfo.userRole,
+          'PRODUCT',
+          productId,
+          `เพิ่มสินค้าใหม่: ${productName}`
+        );
+      } else if (action === 'UPDATE') {
+        await LogService.logUpdate(
+          userInfo.userId,
+          userInfo.userName,
+          userInfo.userRole,
+          'PRODUCT',
+          productId,
+          `แก้ไขสินค้า: ${productName}`
+        );
+      } else if (action === 'DELETE') {
+        await LogService.logDelete(
+          userInfo.userId,
+          userInfo.userName,
+          userInfo.userRole,
+          'PRODUCT',
+          productId,
+          `ลบสินค้า: ${productName}`
+        );
+      }
+    } catch (error) {
+      console.error('Failed to log product action:', error);
+    }
+  }
+
+  static async logCategoryAction(
+    action: 'CREATE' | 'UPDATE' | 'DELETE',
+    categoryId: string,
+    categoryName: string,
+    userInfo: { userId: string; userName: string; userRole: string }
+  ): Promise<void> {
+    try {
+      if (action === 'CREATE') {
+        await LogService.logCreate(
+          userInfo.userId,
+          userInfo.userName,
+          userInfo.userRole,
+          'CATEGORY',
+          categoryId,
+          `เพิ่มหมวดหมู่ใหม่: ${categoryName}`
+        );
+      } else if (action === 'UPDATE') {
+        await LogService.logUpdate(
+          userInfo.userId,
+          userInfo.userName,
+          userInfo.userRole,
+          'CATEGORY',
+          categoryId,
+          `แก้ไขหมวดหมู่: ${categoryName}`
+        );
+      } else if (action === 'DELETE') {
+        await LogService.logDelete(
+          userInfo.userId,
+          userInfo.userName,
+          userInfo.userRole,
+          'CATEGORY',
+          categoryId,
+          `ลบหมวดหมู่: ${categoryName}`
+        );
+      }
+    } catch (error) {
+      console.error('Failed to log category action:', error);
+    }
+  }
+
+  static async logSupplierAction(
+    action: 'CREATE' | 'UPDATE' | 'DELETE',
+    supplierId: string,
+    supplierName: string,
+    userInfo: { userId: string; userName: string; userRole: string }
+  ): Promise<void> {
+    try {
+      if (action === 'CREATE') {
+        await LogService.logCreate(
+          userInfo.userId,
+          userInfo.userName,
+          userInfo.userRole,
+          'SUPPLIER',
+          supplierId,
+          `เพิ่มผู้จำหน่ายใหม่: ${supplierName}`
+        );
+      } else if (action === 'UPDATE') {
+        await LogService.logUpdate(
+          userInfo.userId,
+          userInfo.userName,
+          userInfo.userRole,
+          'SUPPLIER',
+          supplierId,
+          `แก้ไขผู้จำหน่าย: ${supplierName}`
+        );
+      } else if (action === 'DELETE') {
+        await LogService.logDelete(
+          userInfo.userId,
+          userInfo.userName,
+          userInfo.userRole,
+          'SUPPLIER',
+          supplierId,
+          `ลบผู้จำหน่าย: ${supplierName}`
+        );
+      }
+    } catch (error) {
+      console.error('Failed to log supplier action:', error);
+    }
+  }
+
+  static async logUserAction(
+    action: 'CREATE' | 'UPDATE' | 'DELETE',
+    userId: string,
+    userName: string,
+    adminInfo: { userId: string; userName: string; userRole: string }
+  ): Promise<void> {
+    try {
+      if (action === 'CREATE') {
+        await LogService.logCreate(
+          adminInfo.userId,
+          adminInfo.userName,
+          adminInfo.userRole,
+          'USER',
+          userId,
+          `เพิ่มผู้ใช้ใหม่: ${userName}`
+        );
+      } else if (action === 'UPDATE') {
+        await LogService.logUpdate(
+          adminInfo.userId,
+          adminInfo.userName,
+          adminInfo.userRole,
+          'USER',
+          userId,
+          `แก้ไขผู้ใช้: ${userName}`
+        );
+      } else if (action === 'DELETE') {
+        await LogService.logDelete(
+          adminInfo.userId,
+          adminInfo.userName,
+          adminInfo.userRole,
+          'USER',
+          userId,
+          `ลบผู้ใช้: ${userName}`
+        );
+      }
+    } catch (error) {
+      console.error('Failed to log user action:', error);
     }
   }
 }

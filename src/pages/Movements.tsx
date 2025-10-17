@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { ArrowUp, ArrowDown, Activity, TrendingUp, BarChart3, Filter, RefreshCw, Eye, Edit, Trash2, Printer, MoreVertical, User, Package } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { type Movement } from '@/lib/firestoreService';
+import { useStock } from '@/contexts/StockContext';
 import { EditMovementDialog } from '@/components/Dialogs/EditMovementDialog';
 import { WithdrawalDialog } from '@/components/Dialogs/WithdrawalDialog';
 import { ReceiptDialog } from '@/components/Dialogs/ReceiptDialog';
@@ -47,10 +48,7 @@ const formatDate = (dateString: string | undefined): string => {
 };
 
 export default function Movements() {
-  const [movements, setMovements] = useState<MovementWithProduct[]>([]);
-  const [withdrawals, setWithdrawals] = useState<any[]>([]);
-  const [receipts, setReceipts] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
@@ -82,122 +80,19 @@ export default function Movements() {
     timeout: 100
   });
 
+  // ใช้ข้อมูลจาก StockContext แทนการ fetch เอง
+  const stockContext = useStock();
+  const movements = stockContext?.movements || [];
+  const withdrawals = stockContext?.withdrawals || [];
+  const receipts = stockContext?.receipts || [];
+  const refreshData = stockContext?.refreshData;
+
   // Fetch movements data
   const fetchMovements = useCallback(async () => {
     try {
-      setIsLoading(true);
-      const { FirestoreService } = await import('@/lib/firestoreService');
-      
-      // Fetch movements, withdrawals, and receipts
-      const [movementsData, withdrawalsData, receiptsData] = await Promise.all([
-        FirestoreService.getMovements(),
-        FirestoreService.getWithdrawals(),
-        FirestoreService.getReceipts()
-      ]);
-      
-      
-      
-      // Convert withdrawals to movements format for display
-      const withdrawalMovements: MovementWithProduct[] = [];
-      console.log('🔄 Processing withdrawals data:', {
-        withdrawalsCount: withdrawalsData.length,
-        firstWithdrawal: withdrawalsData[0] ? {
-          id: withdrawalsData[0].id,
-          withdrawal_no: withdrawalsData[0].withdrawal_no,
-          items: withdrawalsData[0].items?.map(item => ({
-            product_id: item.product_id,
-            product_name: item.product_name,
-            product_sku: item.product_sku
-          }))
-        } : null
-      });
-      
-      for (const withdrawal of withdrawalsData) {
-        for (const item of withdrawal.items) {
-          // ใช้ SKU ที่บันทึกไว้ในตาราง withdrawals แทนการดึงจากข้อมูลสินค้า
-          withdrawalMovements.push({
-            id: `${withdrawal.id}-${item.id}`,
-            product_id: item.product_id,
-            product_name: item.product_name,
-            product_sku: item.product_sku || '',
-            type: 'out' as const,
-            quantity: item.quantity,
-            reason: item.reason,
-            person_name: withdrawal.requester_name,
-            person_role: 'ผู้เบิก',
-            created_at: withdrawal.created_at,
-            updated_at: withdrawal.created_at,
-            created_by: withdrawal.created_by,
-            withdrawal_no: withdrawal.withdrawal_no,
-            withdrawal_date: withdrawal.withdrawal_date
-          });
-        }
+      if (refreshData) {
+        await refreshData();
       }
-
-      // Convert receipts to movements format for display
-      const receiptMovements: MovementWithProduct[] = [];
-      for (const receipt of receiptsData) {
-        for (const item of receipt.items) {
-          // ใช้ SKU ที่บันทึกไว้ในตาราง receipts แทนการดึงจากข้อมูลสินค้า
-          receiptMovements.push({
-            id: `${receipt.id}-${item.id}`,
-            product_id: item.product_id,
-            product_name: item.product_name,
-            product_sku: item.product_sku || '',
-            type: 'in' as const,
-            quantity: item.quantity,
-            reason: `รับเข้าจาก ${receipt.supplier || 'ผู้จัดจำหน่าย'}`,
-            person_name: receipt.receiver_name,
-            person_role: 'ผู้รับ',
-            created_at: receipt.created_at,
-            updated_at: receipt.created_at,
-            created_by: receipt.created_by,
-            withdrawal_no: receipt.receipt_no, // Store receipt_no in withdrawal_no field for identification
-            withdrawal_date: receipt.receipt_date
-          });
-        }
-      }
-      
-      
-      // Combine movements, withdrawal movements, and receipt movements
-      const allMovements = [...movementsData, ...withdrawalMovements, ...receiptMovements];
-      
-      
-      // Ensure all movements have required properties and fetch SKU from product data
-      const sanitizedMovements: MovementWithProduct[] = [];
-        for (const movement of allMovements) {
-        // ใช้ SKU ที่บันทึกไว้ในตาราง stock_movements แทนการดึงจากข้อมูลสินค้า
-        
-        const sanitized: MovementWithProduct = {
-          id: movement.id || '',
-          product_id: movement.product_id || '',
-          product_name: movement.product_name || '',
-          product_sku: movement.product_sku || '',
-          type: (movement.type || 'out') as 'in' | 'out',
-          quantity: movement.quantity || 0,
-          reason: movement.reason || '',
-          person_name: movement.person_name || '',
-          person_role: movement.person_role || '',
-          created_at: movement.created_at || new Date().toISOString(),
-          updated_at: movement.updated_at || new Date().toISOString(),
-          created_by: movement.created_by || ''
-        };
-      
-        // Add optional withdrawal properties
-        if ((movement as any).withdrawal_no) {
-          sanitized.withdrawal_no = (movement as any).withdrawal_no;
-        }
-        if ((movement as any).withdrawal_date) {
-          sanitized.withdrawal_date = (movement as any).withdrawal_date;
-        }
-        
-        sanitizedMovements.push(sanitized);
-      }
-      
-      setMovements(sanitizedMovements);
-      setWithdrawals(withdrawalsData);
-      setReceipts(receiptsData);
-      
     } catch (error) {
       console.error('Error fetching movements:', error);
       toast({
@@ -205,13 +100,31 @@ export default function Movements() {
         description: 'ไม่สามารถโหลดข้อมูลการเคลื่อนไหวได้',
         variant: 'destructive',
       });
-    } finally {
-      setIsLoading(false);
     }
-  }, [toast]);
+  }, [refreshData, toast]);
 
+  // Keyboard shortcuts
   useEffect(() => {
-    fetchMovements();
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key.toLowerCase() === 'w') {
+        // Open withdrawal dialog
+        e.preventDefault();
+        const btn = document.querySelector('button:has(svg[data-lucide="arrow-down"])') as HTMLButtonElement | null;
+        btn?.click();
+      }
+      if (e.ctrlKey && e.key.toLowerCase() === 'r') {
+        // Open receipt dialog
+        e.preventDefault();
+        const btn = document.querySelector('button:has(svg[data-lucide="arrow-up"])') as HTMLButtonElement | null;
+        btn?.click();
+      }
+      if (e.key === 'F5') {
+        e.preventDefault();
+        fetchMovements();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
   }, [fetchMovements]);
 
   // Filter movements based on search term and type filter (memoized)

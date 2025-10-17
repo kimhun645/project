@@ -5,5 +5,27 @@ service cloud.firestore {
     match /{document=**} {
       allow read, write: if true;
     }
+    
+    // Logs collection - more secure rules
+    match /logs/{logId} {
+      // Anyone can write logs (for client-side logging)
+      allow write: if request.auth != null;
+      
+      // Only authenticated users can read logs
+      allow read: if request.auth != null;
+      
+      // Admin users can delete logs
+      allow delete: if request.auth != null && 
+        (request.auth.token.admin == true || 
+         request.auth.token.role in ['admin', 'manager']);
+    }
+    
+    // System logs collection - admin only
+    match /system_logs/{logId} {
+      allow read, write: if request.auth != null;
+      allow delete: if request.auth != null && 
+        (request.auth.token.admin == true || 
+         request.auth.token.role in ['admin', 'manager']);
+    }
   }
 }

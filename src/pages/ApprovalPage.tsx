@@ -251,12 +251,16 @@ const ApprovalPage: React.FC = () => {
     try {
       setIsLoading(true);
       const { FirestoreService } = await import('@/lib/firestoreService');
+      
+      // เตรียม userInfo สำหรับ logging
+      const userInfo = currentUser ? {
+        userId: currentUser.id,
+        userName: currentUser.displayName || 'Unknown User',
+        userRole: currentUser.role || 'admin'
+      } : undefined;
+      
       for (const requestId of selectedRequests) {
-        await FirestoreService.updateBudgetRequest(requestId, {
-          status: 'APPROVED',
-          approved_by: 'ผู้บริหาร',
-          approved_at: new Date().toISOString()
-        });
+        await FirestoreService.updateBudgetRequestStatus(requestId, 'APPROVED', 'ผู้บริหาร', userInfo);
       }
       
       toast({
@@ -284,12 +288,16 @@ const ApprovalPage: React.FC = () => {
     try {
       setIsLoading(true);
       const { FirestoreService } = await import('@/lib/firestoreService');
+      
+      // เตรียม userInfo สำหรับ logging
+      const userInfo = currentUser ? {
+        userId: currentUser.id,
+        userName: currentUser.displayName || 'Unknown User',
+        userRole: currentUser.role || 'admin'
+      } : undefined;
+      
       for (const requestId of selectedRequests) {
-        await FirestoreService.updateBudgetRequest(requestId, {
-          status: 'REJECTED',
-          approved_by: 'ผู้บริหาร',
-          approved_at: new Date().toISOString()
-        });
+        await FirestoreService.updateBudgetRequestStatus(requestId, 'REJECTED', 'ผู้บริหาร', userInfo);
       }
       
       toast({
@@ -715,7 +723,13 @@ const ApprovalPage: React.FC = () => {
         const { FirestoreService } = await import('@/lib/firestoreService');
         const approverName = currentUser?.displayName || currentUser?.email || 'ผู้อนุมัติ';
         
-        await FirestoreService.updateBudgetRequestStatus(requestId, 'APPROVED', approverName);
+        const userInfo = currentUser ? {
+          userId: currentUser.id,
+          userName: currentUser.displayName || 'Unknown User',
+          userRole: currentUser.role || 'admin'
+        } : undefined;
+        
+        await FirestoreService.updateBudgetRequestStatus(requestId, 'APPROVED', approverName, userInfo);
         
         // Refresh the budget request data
         await fetchBudgetRequest(requestId);
@@ -766,7 +780,13 @@ const ApprovalPage: React.FC = () => {
         const { FirestoreService } = await import('@/lib/firestoreService');
         const approverName = currentUser?.displayName || currentUser?.email || 'ผู้อนุมัติ';
         
-        await FirestoreService.updateBudgetRequestStatus(requestId, 'REJECTED', approverName);
+        const userInfo = currentUser ? {
+          userId: currentUser.id,
+          userName: currentUser.displayName || 'Unknown User',
+          userRole: currentUser.role || 'admin'
+        } : undefined;
+        
+        await FirestoreService.updateBudgetRequestStatus(requestId, 'REJECTED', approverName, userInfo);
         
         // Refresh the budget request data
         await fetchBudgetRequest(requestId);

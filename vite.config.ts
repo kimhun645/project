@@ -29,16 +29,8 @@ export default defineConfig({
     // Optimized bundle configuration
     rollupOptions: {
       output: {
-        // Manual chunks for better caching
-        manualChunks: {
-          // Vendor chunks
-          'react-vendor': ['react', 'react-dom'],
-          'firebase-vendor': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
-          'ui-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-select'],
-          'chart-vendor': ['recharts'],
-          'form-vendor': ['react-hook-form', '@hookform/resolvers', 'zod'],
-          'utils-vendor': ['date-fns', 'clsx', 'tailwind-merge'],
-        },
+        // Single bundle configuration - no manual chunks
+        manualChunks: undefined,
         // Generate single file names
         chunkFileNames: 'js/[name]-[hash].js',
         entryFileNames: 'js/[name]-[hash].js',

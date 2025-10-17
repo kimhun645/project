@@ -41,6 +41,7 @@ export function UserManagement() {
   const [formData, setFormData] = useState({
     displayName: '',
     email: '',
+    password: '',
     role: 'staff',
     phone: '',
     department: '',
@@ -97,15 +98,25 @@ export function UserManagement() {
 
   const handleAddUser = async () => {
     try {
-      const { firestoreService } = await import('@/lib/firestoreService');
-      const newUser: Omit<User, 'id'> = {
-        ...formData,
-        createdAt: new Date().toISOString(),
-        lastLogin: undefined,
-        passwordHash: 'placeholder' // Placeholder, actual password handling would be more complex
-      };
+      // Validate required fields
+      if (!formData.displayName || !formData.email || !formData.password) {
+        toast({
+          title: "ข้อมูลไม่ครบถ้วน",
+          description: "กรุณากรอกชื่อ, อีเมล และรหัสผ่าน",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { userService } = await import('@/lib/userService');
       
-      await FirestoreService.addUser(newUser);
+      await userService.createUser({
+        email: formData.email,
+        password: formData.password,
+        displayName: formData.displayName,
+        role: formData.role as 'staff' | 'manager' | 'admin'
+      });
+      
       await loadUsers(); // Reload data
       setIsAddDialogOpen(false);
       resetForm();
@@ -114,11 +125,11 @@ export function UserManagement() {
         title: "เพิ่มผู้ใช้สำเร็จ",
         description: `เพิ่มผู้ใช้ ${formData.displayName} เรียบร้อยแล้ว`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding user:', error);
       toast({
         title: "เกิดข้อผิดพลาด",
-        description: "ไม่สามารถเพิ่มผู้ใช้ได้",
+        description: error.message || "ไม่สามารถเพิ่มผู้ใช้ได้",
         variant: "destructive",
       });
     }
@@ -130,7 +141,12 @@ export function UserManagement() {
     try {
       const { FirestoreService } = await import('@/lib/firestoreService');
       const updatedUser: Partial<User> = {
-        ...formData
+        displayName: formData.displayName,
+        email: formData.email,
+        role: formData.role,
+        isActive: formData.isActive,
+        phone: formData.phone,
+        department: formData.department
       };
       
       await FirestoreService.updateUser(selectedUser.id, updatedUser);
@@ -203,6 +219,7 @@ export function UserManagement() {
     setFormData({
       displayName: '',
       email: '',
+      password: '',
       role: 'staff',
       phone: '',
       department: '',
@@ -278,6 +295,16 @@ export function UserManagement() {
                   value={formData.email}
                   onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
                   placeholder="กรอกอีเมล"
+                />
+              </div>
+              <div>
+                <Label htmlFor="password">รหัสผ่าน</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={formData.password}
+                  onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                  placeholder="กรอกรหัสผ่าน"
                 />
               </div>
               <div>
@@ -455,9 +482,9 @@ export function UserManagement() {
                       <AlertDialogContent>
                         <AlertDialogHeader>
                           <AlertDialogTitle>ยืนยันการลบ</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            คุณแน่ใจหรือไม่ที่จะลบผู้ใช้ {user.name}? การดำเนินการนี้ไม่สามารถย้อนกลับได้
-                          </AlertDialogDescription>
+                        <AlertDialogDescription>
+                          คุณแน่ใจหรือไม่ที่จะลบผู้ใช้ {user.displayName}? การดำเนินการนี้ไม่สามารถย้อนกลับได้
+                        </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>ยกเลิก</AlertDialogCancel>

@@ -125,6 +125,36 @@ export function AuthProvider({ children }: AuthProviderProps) {
       console.log('✅ AuthContext: User displayName:', user.displayName);
       setCurrentUser(user);
 
+      // บันทึก logs การ login
+      try {
+        const { LogService } = await import('@/lib/logService');
+        await LogService.log(
+          user.id,
+          user.displayName || user.email,
+          user.role,
+          'LOGIN',
+          `เข้าสู่ระบบ: ${user.displayName || user.email}`,
+          'Authentication',
+          {
+            resourceId: user.id,
+            severity: 'success',
+            metadata: {
+              userEmail: user.email,
+              userRole: user.role,
+              loginTime: new Date().toISOString()
+            }
+          }
+        );
+        
+        // Trigger log viewer refresh if on settings page
+        const currentPath = window.location.pathname;
+        if (currentPath.includes('/settings')) {
+          window.dispatchEvent(new CustomEvent('logRefresh'));
+        }
+      } catch (logError) {
+        console.error('Failed to log login:', logError);
+      }
+
       const firebaseUser = await userService.getCurrentUser();
       setFirebaseUser(firebaseUser);
 
@@ -136,6 +166,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
           apiAuth.setFirebaseIdToken(idToken);
         } catch (tokenError) {
           console.error('Failed to get Firebase ID Token after sign in:', tokenError);
+        }
+      }
+
+      // บันทึก logs การ login
+      if (currentUser) {
+        try {
+          const { LogService } = await import('@/lib/logService');
+          await LogService.log(
+            currentUser.id,
+            currentUser.displayName || currentUser.email,
+            currentUser.role || 'user',
+            'LOGIN',
+            `เข้าสู่ระบบ: ${currentUser.displayName || currentUser.email}`,
+            'Authentication',
+            {
+              severity: 'success',
+              metadata: {
+                userEmail: currentUser.email,
+                userRole: currentUser.role,
+                loginTime: new Date().toISOString()
+              }
+            }
+          );
+          console.log('📝 Login logged successfully');
+        } catch (logError) {
+          console.error('❌ Failed to log login:', logError);
         }
       }
     } catch (error: any) {
@@ -150,6 +206,39 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const signOut = async () => {
     try {
       console.log('Signing out...');
+      
+      // บันทึก logs การ logout ก่อนออกจากระบบ
+      if (currentUser) {
+        try {
+          const { LogService } = await import('@/lib/logService');
+          await LogService.log(
+            currentUser.id,
+            currentUser.displayName || currentUser.email,
+            currentUser.role,
+            'LOGOUT',
+            `ออกจากระบบ: ${currentUser.displayName || currentUser.email}`,
+            'Authentication',
+            {
+              resourceId: currentUser.id,
+              severity: 'success',
+              metadata: {
+                userEmail: currentUser.email,
+                userRole: currentUser.role,
+                logoutTime: new Date().toISOString()
+              }
+            }
+          );
+          
+          // Trigger log viewer refresh if on settings page
+          const currentPath = window.location.pathname;
+          if (currentPath.includes('/settings')) {
+            window.dispatchEvent(new CustomEvent('logRefresh'));
+          }
+        } catch (logError) {
+          console.error('Failed to log logout:', logError);
+        }
+      }
+      
       await userService.signOut();
       setCurrentUser(null);
       setFirebaseUser(null);

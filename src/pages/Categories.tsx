@@ -10,6 +10,8 @@ import { AddCategoryDialog } from '@/components/Dialogs/AddCategoryDialog';
 import { EditCategoryDialog } from '@/components/Dialogs/EditCategoryDialog';
 import { useToast } from '@/hooks/use-toast';
 import { useBarcodeScanner } from '@/hooks/use-barcode-scanner';
+import { useAuth } from '@/contexts/AuthContext';
+import { useStock } from '@/contexts/StockContext';
 import {
   ProductsStylePageLayout,
   ProductsStylePageHeader,
@@ -23,9 +25,8 @@ import {
 } from '@/components/ui/shared-components';
 
 export default function Categories() {
-  const [categories, setCategories] = useState<Category[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [productCounts, setProductCounts] = useState<Record<string, number>>({});
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -43,6 +44,27 @@ export default function Categories() {
   const [typeFilter, setTypeFilter] = useState('all');
   
   const { toast } = useToast();
+  const { currentUser } = useAuth();
+
+  // ใช้ข้อมูลจาก StockContext แทนการ fetch เอง
+  const stockContext = useStock();
+  const categories = stockContext?.categories || [];
+  const refreshData = stockContext?.refreshData;
+
+  const fetchCategories = async () => {
+    try {
+      if (refreshData) {
+        await refreshData();
+      }
+    } catch (error) {
+      console.error('Error loading categories:', error);
+      toast({
+        title: "เกิดข้อผิดพลาด",
+        description: "ไม่สามารถโหลดข้อมูลหมวดหมู่ได้",
+        variant: "destructive",
+      });
+    }
+  };
 
   // Barcode scanner support
   const { scannerDetected, lastScannedCode } = useBarcodeScanner({
@@ -125,8 +147,20 @@ export default function Categories() {
   const handleBulkDelete = async () => {
     try {
       const { FirestoreService } = await import('@/lib/firestoreService');
+      
+      // สร้าง userInfo สำหรับ logging
+      const userInfo = currentUser ? {
+        userId: currentUser.id,
+        userName: currentUser.displayName || currentUser.email,
+        userRole: currentUser.role || 'user'
+      } : {
+        userId: 'unknown',
+        userName: 'Unknown User',
+        userRole: 'user'
+      };
+      
       for (const categoryId of selectedCategories) {
-        await FirestoreService.deleteCategory(categoryId);
+        await FirestoreService.deleteCategory(categoryId, userInfo);
       }
 
       toast({
@@ -142,31 +176,6 @@ export default function Categories() {
         description: "ไม่สามารถลบหมวดหมู่ได้",
         variant: "destructive",
       });
-    }
-  };
-
-  const fetchCategories = async () => {
-    try {
-      const { FirestoreService } = await import('@/lib/firestoreService');
-      const categoriesData = await FirestoreService.getCategories();
-      const productsData = await FirestoreService.getProducts();
-
-      const counts: Record<string, number> = {};
-      productsData.forEach(product => {
-        counts[product.category_id] = (counts[product.category_id] || 0) + 1;
-      });
-
-      setCategories(categoriesData || []);
-      setProductCounts(counts);
-    } catch (error) {
-      console.error('Error loading categories:', error);
-      toast({
-        title: "เกิดข้อผิดพลาด",
-        description: "ไม่สามารถโหลดข้อมูลหมวดหมู่ได้",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -189,7 +198,19 @@ export default function Categories() {
       }
 
       const { FirestoreService } = await import('@/lib/firestoreService');
-        await FirestoreService.deleteCategory(categoryId);
+      
+      // สร้าง userInfo สำหรับ logging
+      const userInfo = currentUser ? {
+        userId: currentUser.id,
+        userName: currentUser.displayName || currentUser.email,
+        userRole: currentUser.role || 'user'
+      } : {
+        userId: 'unknown',
+        userName: 'Unknown User',
+        userRole: 'user'
+      };
+      
+      await FirestoreService.deleteCategory(categoryId, userInfo);
 
       toast({
         title: "สำเร็จ",
@@ -205,10 +226,6 @@ export default function Categories() {
       });
     }
   };
-
-  useEffect(() => {
-    fetchCategories();
-  }, []);
 
   const totalCategories = categories.length;
   const medicineCategories = categories.filter(c => c.is_medicine).length;

@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { FirestoreService } from '@/lib/firestoreService';
+import { z } from 'zod';
 import { useBarcodeScanner } from '@/hooks/use-barcode-scanner';
 
 interface ProductForReceipt {
@@ -136,6 +137,17 @@ export function ReceiptDialog({ onReceiptAdded }: ReceiptDialogProps) {
     if (!newOpen) {
       resetForm();
     }
+    if (newOpen) {
+      // Load draft from localStorage
+      try {
+        const draft = localStorage.getItem('draft_receipt');
+        if (draft) {
+          const parsed = JSON.parse(draft);
+          setFormData(prev => ({ ...prev, ...parsed.formData }));
+          setReceiptItems(parsed.receiptItems || []);
+        }
+      } catch (_) {}
+    }
   };
 
   const updateFormData = (field: string, value: string) => {
@@ -148,6 +160,15 @@ export function ReceiptDialog({ onReceiptAdded }: ReceiptDialogProps) {
       generateReceiptNo();
     }
   }, [open]);
+
+  // Auto-save draft
+  useEffect(() => {
+    if (!open) return;
+    const payload = { formData, receiptItems };
+    try {
+      localStorage.setItem('draft_receipt', JSON.stringify(payload));
+    } catch (_) {}
+  }, [open, formData, receiptItems]);
 
   const fetchProducts = async () => {
     try {
@@ -324,19 +345,42 @@ export function ReceiptDialog({ onReceiptAdded }: ReceiptDialogProps) {
       return;
     }
     
-    if (!formData.receipt_no || !formData.receipt_date || !formData.receiver_name) {
-      toast({
-        title: "กรุณากรอกข้อมูลให้ครบถ้วน",
-        description: "กรุณาระบุเลขที่รับ วันที่ และชื่อผู้รับ",
-        variant: "destructive",
-      });
-      return;
-    }
+    // Strong validation with zod
+    const itemSchema = z.object({
+      id: z.string().min(1),
+      product_id: z.string().min(1),
+      product_name: z.string().min(1),
+      product_sku: z.string().optional(),
+      quantity: z.number().int().positive(),
+      unit: z.string().min(1),
+      unit_price: z.number().min(0),
+      total_price: z.number().min(0),
+      supplier: z.string().optional(),
+      batch_no: z.string().optional(),
+      expiry_date: z.string().optional()
+    });
 
-    if (receiptItems.length === 0) {
+    const receiptSchema = z.object({
+      receipt_no: z.string().min(1),
+      receipt_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      receiver_name: z.string().min(1),
+      department: z.string().optional(),
+      supplier: z.string().optional(),
+      invoice_no: z.string().optional(),
+      notes: z.string().optional(),
+      items: z.array(itemSchema).min(1)
+    });
+
+    const parsed = receiptSchema.safeParse({
+      ...formData,
+      items: receiptItems
+    });
+
+    if (!parsed.success) {
+      const firstErr = parsed.error.issues?.[0];
       toast({
-        title: "กรุณาเพิ่มรายการสินค้า",
-        description: "กรุณาเพิ่มสินค้าที่ต้องการรับ",
+        title: "ข้อมูลไม่ถูกต้อง",
+        description: firstErr ? `${firstErr.path.join('.')}: ${firstErr.message}` : 'กรุณาตรวจสอบข้อมูลอีกครั้ง',
         variant: "destructive",
       });
       return;
@@ -396,24 +440,9 @@ export function ReceiptDialog({ onReceiptAdded }: ReceiptDialogProps) {
       // Notify parent component to refresh data
       onReceiptAdded();
 
-      // Update product stocks
+      // Transactional stock increase per item
       for (const item of receiptItems) {
-        const product = await FirestoreService.getProduct(item.product_id);
-        if (product) {
-          const newStock = (product.current_stock || 0) + item.quantity;
-          
-          console.log('📊 Updating stock for product:', {
-            productId: item.product_id,
-            current: product.current_stock,
-            quantity: item.quantity,
-            newStock: newStock
-          });
-
-          await FirestoreService.updateProduct(item.product_id, {
-            current_stock: newStock
-          });
-          console.log('✅ Stock updated successfully for product:', item.product_id);
-        }
+        await FirestoreService.updateProductStockTransactional(item.product_id, item.quantity);
       }
 
       toast({
@@ -422,19 +451,15 @@ export function ReceiptDialog({ onReceiptAdded }: ReceiptDialogProps) {
       });
 
       resetForm();
+      try { localStorage.removeItem('draft_receipt'); } catch (_) {}
       setOpen(false);
       onReceiptAdded();
 
     } catch (error) {
       console.error('❌ Error creating receipt:', error);
-      console.error('❌ Error details:', {
-        message: error.message,
-        code: error.code,
-        stack: error.stack
-      });
       toast({
         title: "เกิดข้อผิดพลาด",
-        description: `ไม่สามารถบันทึกข้อมูลได้: ${error.message || 'Unknown error'}`,
+        description: `ไม่สามารถบันทึกข้อมูลได้: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variant: "destructive",
       });
     } finally {

@@ -8,6 +8,8 @@ interface StockState {
   movements: StockMovement[];
   categories: Category[];
   suppliers: Supplier[];
+  receipts: any[];
+  withdrawals: any[];
   stats: StockStats;
   filter: StockFilter;
   loading: boolean;
@@ -18,6 +20,8 @@ type StockAction =
   | { type: 'SET_CATEGORIES'; payload: Category[] }
   | { type: 'SET_SUPPLIERS'; payload: Supplier[] }
   | { type: 'SET_MOVEMENTS'; payload: StockMovement[] }
+  | { type: 'SET_RECEIPTS'; payload: any[] }
+  | { type: 'SET_WITHDRAWALS'; payload: any[] }
   | { type: 'ADD_PRODUCT'; payload: Product }
   | { type: 'UPDATE_PRODUCT'; payload: Product }
   | { type: 'DELETE_PRODUCT'; payload: string }
@@ -33,6 +37,8 @@ const initialState: StockState = {
   movements: [],
   categories: [],
   suppliers: [],
+  receipts: [],
+  withdrawals: [],
   stats: {
     totalProducts: 0,
     totalValue: 0,
@@ -76,6 +82,10 @@ function stockReducer(state: StockState, action: StockAction): StockState {
       return { ...state, suppliers: action.payload };
     case 'SET_MOVEMENTS':
       return { ...state, movements: action.payload };
+    case 'SET_RECEIPTS':
+      return { ...state, receipts: action.payload };
+    case 'SET_WITHDRAWALS':
+      return { ...state, withdrawals: action.payload };
     case 'ADD_PRODUCT':
       return {
         ...state,
@@ -162,46 +172,132 @@ const StockContext = createContext<StockContextValue | undefined>(undefined);
 
 export function StockProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(stockReducer, initialState);
-  const { isAuthenticated } = useAuth();
+  const { currentUser } = useAuth();
 
   // Load data from database
   const refreshData = async () => {
-    if (!isAuthenticated) {
+    if (!currentUser) {
       console.log('User not authenticated, skipping data load');
       return;
     }
 
+    console.log('🔄 เริ่มโหลดข้อมูลจาก Firestore...');
     dispatch({ type: 'SET_LOADING', payload: true });
+    
     try {
-      // Load products
       const { FirestoreService } = await import('@/lib/firestoreService');
+      
+      // Load products
+      console.log('📦 กำลังโหลดข้อมูลสินค้า...');
       const products = await FirestoreService.getProducts();
+      console.log('📦 Products loaded:', products.length);
+      console.log('📦 Products sample:', products.slice(0, 2)); // แสดงตัวอย่างข้อมูล
       dispatch({ type: 'SET_PRODUCTS', payload: products });
 
       // Load categories
+      console.log('📁 กำลังโหลดข้อมูลหมวดหมู่...');
       const categories = await FirestoreService.getCategories();
+      console.log('📁 Categories loaded:', categories.length);
       dispatch({ type: 'SET_CATEGORIES', payload: categories });
 
       // Load suppliers
+      console.log('🏢 กำลังโหลดข้อมูลผู้จัดหา...');
       const suppliers = await FirestoreService.getSuppliers();
+      console.log('🏢 Suppliers loaded:', suppliers.length);
       dispatch({ type: 'SET_SUPPLIERS', payload: suppliers });
 
       // Load movements
+      console.log('🔄 กำลังโหลดข้อมูลการเคลื่อนไหว...');
       const movements = await FirestoreService.getMovements();
-      dispatch({ type: 'SET_MOVEMENTS', payload: movements });
+      console.log('🔄 Movements loaded:', movements.length);
+
+      // Load withdrawals
+      console.log('📤 กำลังโหลดข้อมูลการเบิก...');
+      const withdrawals = await FirestoreService.getWithdrawals();
+      console.log('📤 Withdrawals loaded:', withdrawals.length);
+
+      // Load receipts  
+      console.log('📥 กำลังโหลดข้อมูลการรับ...');
+      const receipts = await FirestoreService.getReceipts();
+      console.log('📥 Receipts loaded:', receipts.length);
+
+      // รวมข้อมูล withdrawals และ receipts เป็น movements
+      const withdrawalMovements = withdrawals.flatMap(w => 
+        w.items?.map(item => ({
+          id: `${w.id}_${item.id}`,
+          product_id: item.product_id,
+          type: 'out' as const,
+          quantity: item.quantity,
+          reason: `${w.purpose} - ${item.reason}`,
+          created_at: w.created_at || w.withdrawal_date || new Date().toISOString(),
+          created_by: w.requester_name || 'ไม่ระบุ'
+        })) || []
+      );
+
+      const receiptMovements = receipts.flatMap(r => 
+        r.items?.map(item => ({
+          id: `${r.id}_${item.id}`,
+          product_id: item.product_id,
+          type: 'in' as const,
+          quantity: item.quantity,
+          reason: `${r.notes} - ${item.supplier}`,
+          created_at: r.created_at || r.receipt_date || new Date().toISOString(),
+          created_by: r.receiver_name || 'ไม่ระบุ'
+        })) || []
+      );
+
+      const combinedMovements = [
+        ...movements,
+        ...withdrawalMovements,
+        ...receiptMovements
+      ];
+
+      dispatch({ type: 'SET_MOVEMENTS', payload: combinedMovements });
+      dispatch({ type: 'SET_RECEIPTS', payload: receipts });
+      dispatch({ type: 'SET_WITHDRAWALS', payload: withdrawals });
+      console.log('🔄 Combined movements:', combinedMovements.length);
+      
+      // สรุปข้อมูลที่โหลดได้
+      console.log('✅ สรุปข้อมูลที่โหลดได้:', {
+        products: products.length,
+        categories: categories.length,
+        suppliers: suppliers.length,
+        movements: combinedMovements.length,
+        withdrawals: withdrawals.length,
+        receipts: receipts.length
+      });
 
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error('❌ Error loading data:', error);
+      
+      // แสดงข้อผิดพลาดที่เฉพาะเจาะจง
+      if (error.code === 'permission-denied') {
+        console.error('🚫 ไม่มีสิทธิ์เข้าถึงข้อมูล Firestore');
+      } else if (error.code === 'unavailable') {
+        console.error('🌐 ไม่สามารถเชื่อมต่อ Firestore ได้');
+      } else if (error.code === 'deadline-exceeded') {
+        console.error('⏰ การเชื่อมต่อหมดเวลา');
+      } else {
+        console.error('💥 ข้อผิดพลาดอื่น:', error.message);
+      }
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
   };
 
   useEffect(() => {
-    if (isAuthenticated) {
+    console.log('🔐 Auth state changed:', { currentUser: !!currentUser, email: currentUser?.email });
+    if (currentUser) {
+      console.log('✅ User authenticated, loading data...');
       refreshData();
+    } else {
+      console.log('❌ User not authenticated, clearing data...');
+      dispatch({ type: 'SET_PRODUCTS', payload: [] });
+      dispatch({ type: 'SET_CATEGORIES', payload: [] });
+      dispatch({ type: 'SET_SUPPLIERS', payload: [] });
+      dispatch({ type: 'SET_MOVEMENTS', payload: [] });
     }
-  }, [isAuthenticated]);
+  }, [currentUser]);
 
   useEffect(() => {
     dispatch({ type: 'CALCULATE_STATS' });

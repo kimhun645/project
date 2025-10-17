@@ -62,7 +62,7 @@ export default function Login() {
             <Building2 className="h-8 w-8 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Stock Scribe</h1>
-          <p className="text-gray-600">ระบบจัดการคลังสินค้าอัจฉริยะ</p>
+          <p className="text-gray-600">ระบบจัดการพัสดุ</p>
         </div>
 
         {/* Login Card */}

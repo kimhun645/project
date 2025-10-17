@@ -15,7 +15,8 @@ import {
   DollarSign,
   CheckCircle,
   LogOut,
-  User
+  User,
+  Activity
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -23,24 +24,32 @@ interface SidebarProps {
 }
 
 const navigation = [
-  { name: 'แดชบอร์ด', href: '/dashboard', icon: BarChart3 },
-  { name: 'สินค้า', href: '/products', icon: Package },
-  { name: 'การเบิก/การรับพัสดุ', href: '/movements', icon: ArrowUpDown },
-  { name: 'หมวดหมู่', href: '/categories', icon: Tags },
-  { name: 'ผู้จำหน่าย', href: '/suppliers', icon: Truck },
-  { name: 'สแกนบาร์โค้ด', href: '/scanner', icon: ScanLine },
-  { name: 'ขอใช้งบประมาณ', href: '/budget-request', icon: DollarSign },
-  { name: 'การอนุมัติ', href: '/approval', icon: CheckCircle, disabled: false },
-  { name: 'รายงาน', href: '/reports', icon: FileText },
-  { name: 'โปรไฟล์', href: '/profile', icon: User },
-  { name: 'ตั้งค่า', href: '/settings', icon: Settings },
+  { name: 'แดชบอร์ด', href: '/dashboard', icon: BarChart3, roles: ['admin', 'manager', 'staff'] },
+  { name: 'สินค้า', href: '/products', icon: Package, roles: ['admin', 'manager', 'staff'] },
+  { name: 'การเบิก/การรับพัสดุ', href: '/movements', icon: ArrowUpDown, roles: ['admin', 'manager', 'staff'] },
+  { name: 'หมวดหมู่', href: '/categories', icon: Tags, roles: ['admin', 'manager', 'staff'] },
+  { name: 'ผู้จำหน่าย', href: '/suppliers', icon: Truck, roles: ['admin', 'manager', 'staff'] },
+  { name: 'สแกนบาร์โค้ด', href: '/scanner', icon: ScanLine, roles: ['admin', 'manager', 'staff'] },
+  { name: 'ขอใช้งบประมาณ', href: '/budget-request', icon: DollarSign, roles: ['admin', 'manager', 'staff'] },
+  { name: 'การอนุมัติ', href: '/approval', icon: CheckCircle, roles: ['admin', 'manager'], disabled: false },
+  { name: 'รายงาน', href: '/reports', icon: FileText, roles: ['admin', 'manager', 'staff'] },
+  { name: 'โปรไฟล์', href: '/profile', icon: User, roles: ['admin', 'manager', 'staff'] },
+  { name: 'ตั้งค่า', href: '/settings', icon: Settings, roles: ['admin'] },
 ];
+
+// Function to filter navigation items based on user role
+const getFilteredNavigation = (userRole: string) => {
+  return navigation.filter(item => item.roles.includes(userRole));
+};
 
 export function Sidebar({ onLogout }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout, user } = useAuth();
   const { navigateTo, isNavigating } = useNavigation();
+
+  // Get filtered navigation items based on user role
+  const filteredNavigation = user ? getFilteredNavigation(user.role) : [];
 
   const handleLogout = async () => {
     try {
@@ -77,7 +86,7 @@ export function Sidebar({ onLogout }: SidebarProps) {
           </div>
           
           <nav className="mt-8 flex-1 space-y-1 px-1 lg:px-2">
-            {navigation.map((item) => {
+            {filteredNavigation.map((item) => {
               const isActive = location.pathname === item.href;
               const isDisabled = item.disabled;
               

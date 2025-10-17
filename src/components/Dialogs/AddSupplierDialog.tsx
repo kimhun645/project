@@ -169,7 +169,7 @@ export function AddSupplierDialog({ onSupplierAdded }: AddSupplierDialogProps) {
                   เพิ่มผู้จำหน่ายใหม่
                 </DialogTitle>
                 <DialogDescription className="text-sm text-slate-600 font-medium mt-1">
-                  สร้างผู้จำหน่ายใหม่ในระบบจัดการคลังสินค้า
+                  สร้างผู้จำหน่ายใหม่ในระบบจัดการพัสดุ
                 </DialogDescription>
               </div>
             </div>

@@ -6,12 +6,14 @@ import { Progress } from '@/components/ui/progress';
 import { 
   Plus, RotateCcw, ArrowRight, BarChart3, Package, AlertCircle, 
   XCircle, TrendingUp, TrendingDown, RefreshCw, Building2, Users, 
-  DollarSign, CheckCircle, Activity, Zap, Target, Clock, Eye,
+  CheckCircle, Activity, Zap, Target, Clock, Eye,
   ArrowUpRight, ArrowDownRight, Calendar, Filter, Download,
-  ShoppingCart, Truck, AlertTriangle, Info, Star, Award
+  ShoppingCart, Truck, AlertTriangle, Info, Star, Award,
+  GripVertical, Settings, Maximize2, Minimize2, X, Move
 } from 'lucide-react';
 import { Layout } from '@/components/Layout/Layout';
 import { api, type Product, type Movement, type Category, type Supplier } from '@/lib/apiService';
+import { useStock } from '@/contexts/StockContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, Legend } from 'recharts';
 
 interface DashboardStats {
@@ -58,19 +60,118 @@ interface QuickAction {
   href: string;
 }
 
+interface Widget {
+  id: string;
+  type: 'stats' | 'chart' | 'activities' | 'quick-actions' | 'performance' | 'category-distribution';
+  title: string;
+  position: { x: number; y: number };
+  size: { width: number; height: number };
+  visible: boolean;
+  minimized: boolean;
+  order: number;
+}
+
+interface DrillDownData {
+  type: 'product' | 'category' | 'supplier' | 'movement' | 'receipt' | 'withdrawal';
+  id: string;
+  data: any;
+}
+
 export default function Dashboard() {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [movements, setMovements] = useState<Movement[]>([]);
-  const [receipts, setReceipts] = useState<any[]>([]);
-  const [withdrawals, setWithdrawals] = useState<any[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  
+  // ใช้ข้อมูลจาก StockContext
+  const stockContext = useStock();
+  const products = stockContext?.products || [];
+  const movements = stockContext?.movements || [];
+  const categories = stockContext?.categories || [];
+  const suppliers = stockContext?.suppliers || [];
+  const receipts = stockContext?.receipts || [];
+  const withdrawals = stockContext?.withdrawals || [];
   const [selectedTimeRange, setSelectedTimeRange] = useState<'7d' | '30d' | '90d' | '1y'>('30d');
   const [chartType, setChartType] = useState<'bar' | 'line' | 'area'>('bar');
   const [hoveredData, setHoveredData] = useState<any>(null);
+  
+  // Widget System States
+  const [widgets, setWidgets] = useState<Widget[]>([
+    { id: 'stats', type: 'stats', title: 'สถิติ', position: { x: 0, y: 0 }, size: { width: 4, height: 2 }, visible: true, minimized: false, order: 1 },
+    { id: 'performance', type: 'performance', title: 'ตัวชี้วัดประสิทธิภาพ', position: { x: 0, y: 2 }, size: { width: 4, height: 3 }, visible: true, minimized: false, order: 2 },
+    { id: 'activities', type: 'activities', title: 'กิจกรรมล่าสุด', position: { x: 0, y: 5 }, size: { width: 1, height: 4 }, visible: true, minimized: false, order: 3 },
+    { id: 'chart', type: 'chart', title: 'กราฟการเบิก/การรับ', position: { x: 1, y: 5 }, size: { width: 2, height: 4 }, visible: true, minimized: false, order: 4 },
+    { id: 'quick-actions', type: 'quick-actions', title: 'การดำเนินการด่วน', position: { x: 0, y: 9 }, size: { width: 1, height: 3 }, visible: true, minimized: false, order: 5 },
+    { id: 'category-distribution', type: 'category-distribution', title: 'การกระจายหมวดหมู่', position: { x: 1, y: 9 }, size: { width: 2, height: 3 }, visible: true, minimized: false, order: 6 }
+  ]);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [draggedWidget, setDraggedWidget] = useState<string | null>(null);
+  
+  // Real-time Updates States
+  const [isRealTimeEnabled, setIsRealTimeEnabled] = useState(true);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'reconnecting'>('connected');
+  const [lastRealTimeUpdate, setLastRealTimeUpdate] = useState<Date>(new Date());
+  
+  // Drill-down States
+  const [drillDownData, setDrillDownData] = useState<DrillDownData | null>(null);
+  const [showDrillDown, setShowDrillDown] = useState(false);
+
+  // Widget System Functions
+  const toggleWidgetVisibility = (widgetId: string) => {
+    setWidgets(prev => prev.map(widget => 
+      widget.id === widgetId ? { ...widget, visible: !widget.visible } : widget
+    ));
+  };
+
+  const toggleWidgetMinimize = (widgetId: string) => {
+    setWidgets(prev => prev.map(widget => 
+      widget.id === widgetId ? { ...widget, minimized: !widget.minimized } : widget
+    ));
+  };
+
+  const moveWidget = (widgetId: string, newPosition: { x: number; y: number }) => {
+    setWidgets(prev => prev.map(widget => 
+      widget.id === widgetId ? { ...widget, position: newPosition } : widget
+    ));
+  };
+
+  const resizeWidget = (widgetId: string, newSize: { width: number; height: number }) => {
+    setWidgets(prev => prev.map(widget => 
+      widget.id === widgetId ? { ...widget, size: newSize } : widget
+    ));
+  };
+
+  const resetWidgetLayout = () => {
+    setWidgets([
+      { id: 'stats', type: 'stats', title: 'สถิติ', position: { x: 0, y: 0 }, size: { width: 4, height: 2 }, visible: true, minimized: false, order: 1 },
+      { id: 'performance', type: 'performance', title: 'ตัวชี้วัดประสิทธิภาพ', position: { x: 0, y: 2 }, size: { width: 4, height: 3 }, visible: true, minimized: false, order: 2 },
+      { id: 'activities', type: 'activities', title: 'กิจกรรมล่าสุด', position: { x: 0, y: 5 }, size: { width: 1, height: 4 }, visible: true, minimized: false, order: 3 },
+      { id: 'chart', type: 'chart', title: 'กราฟการเบิก/การรับ', position: { x: 1, y: 5 }, size: { width: 2, height: 4 }, visible: true, minimized: false, order: 4 },
+      { id: 'quick-actions', type: 'quick-actions', title: 'การดำเนินการด่วน', position: { x: 0, y: 9 }, size: { width: 1, height: 3 }, visible: true, minimized: false, order: 5 },
+      { id: 'category-distribution', type: 'category-distribution', title: 'การกระจายหมวดหมู่', position: { x: 1, y: 9 }, size: { width: 2, height: 3 }, visible: true, minimized: false, order: 6 }
+    ]);
+  };
+
+  // Drill-down Functions
+  const handleDrillDown = (type: DrillDownData['type'], id: string, data: any) => {
+    setDrillDownData({ type, id, data });
+    setShowDrillDown(true);
+  };
+
+  const closeDrillDown = () => {
+    setShowDrillDown(false);
+    setDrillDownData(null);
+  };
+
+  // Real-time Functions
+  const enableRealTimeUpdates = () => {
+    setIsRealTimeEnabled(true);
+    setConnectionStatus('connected');
+  };
+
+  const disableRealTimeUpdates = () => {
+    setIsRealTimeEnabled(false);
+    setConnectionStatus('disconnected');
+  };
 
   // Calculate growth rate based on actual data
   const calculateGrowthRate = (movements: Movement[], days: number): number => {
@@ -176,6 +277,28 @@ export default function Dashboard() {
     const days = selectedTimeRange === '7d' ? 7 : selectedTimeRange === '30d' ? 30 : selectedTimeRange === '90d' ? 90 : 365;
     const data = [];
     
+    // Helper function to normalize date
+    const normalizeDate = (dateInput: any): Date => {
+      if (!dateInput) return new Date(0);
+      
+      // Handle Firestore Timestamp
+      if (dateInput && typeof dateInput === 'object' && 'toDate' in dateInput) {
+        return dateInput.toDate();
+      }
+      
+      // Handle string dates
+      if (typeof dateInput === 'string') {
+        return new Date(dateInput);
+      }
+      
+      // Handle Date objects
+      if (dateInput instanceof Date) {
+        return dateInput;
+      }
+      
+      return new Date(0);
+    };
+    
     for (let i = days - 1; i >= 0; i--) {
       const date = new Date();
       date.setDate(date.getDate() - i);
@@ -188,40 +311,45 @@ export default function Dashboard() {
       
       // ข้อมูลจาก movements
       const dayMovements = movements.filter(m => {
-        const movementDate = new Date(m.created_at);
+        if (!m || !m.created_at) return false;
+        const movementDate = normalizeDate(m.created_at);
         return movementDate >= startOfDay && movementDate <= endOfDay;
       });
       
       // ข้อมูลจาก receipts
       const dayReceipts = receipts.filter(r => {
-        const receiptDate = new Date(r.created_at);
+        if (!r || !r.created_at) return false;
+        const receiptDate = normalizeDate(r.created_at);
         return receiptDate >= startOfDay && receiptDate <= endOfDay;
       });
       
       // ข้อมูลจาก withdrawals
       const dayWithdrawals = withdrawals.filter(w => {
-        const withdrawalDate = new Date(w.created_at);
+        if (!w || !w.created_at) return false;
+        const withdrawalDate = normalizeDate(w.created_at);
         return withdrawalDate >= startOfDay && withdrawalDate <= endOfDay;
       });
       
-      // คำนวณจำนวนรับเข้า (in)
+      // คำนวณจำนวนรับเข้า (in) - รวม movements type 'in' และ receipts
       const movementsIn = dayMovements.filter(m => m.type === 'in').reduce((sum, m) => sum + (m.quantity || 0), 0);
       const receiptsIn = dayReceipts.reduce((sum, r) => {
         return sum + (r.items?.reduce((itemSum: number, item: any) => itemSum + (item.quantity || 0), 0) || 0);
       }, 0);
       
-      // คำนวณจำนวนเบิกออก (out)
+      // คำนวณจำนวนเบิกออก (out) - รวม movements type 'out' และ withdrawals
       const movementsOut = dayMovements.filter(m => m.type === 'out').reduce((sum, m) => sum + (m.quantity || 0), 0);
       const withdrawalsOut = dayWithdrawals.reduce((sum, w) => {
         return sum + (w.items?.reduce((itemSum: number, item: any) => itemSum + (item.quantity || 0), 0) || 0);
       }, 0);
       
+      // คำนวณจำนวนรายการ (ไม่ใช่จำนวนสินค้า)
+      const totalTransactions = dayMovements.length + dayReceipts.length + dayWithdrawals.length;
       
       data.push({
         date: date.toLocaleDateString('th-TH', { month: 'short', day: 'numeric' }),
         in: movementsIn + receiptsIn,
         out: movementsOut + withdrawalsOut,
-        total: dayMovements.length + dayReceipts.length + dayWithdrawals.length
+        total: totalTransactions
       });
     }
     
@@ -298,7 +426,7 @@ export default function Dashboard() {
     {
       title: 'ขอใช้งบประมาณ',
       description: 'สร้างคำขอใช้งบประมาณ',
-      icon: <DollarSign className="h-5 w-5" />,
+      icon: <span className="text-lg font-bold">฿</span>,
       color: 'bg-orange-500',
       href: '/budget-request'
     }
@@ -306,26 +434,9 @@ export default function Dashboard() {
 
   const fetchDashboardData = async () => {
     try {
-      setLoading(true);
-
-      const { FirestoreService } = await import('@/lib/firestoreService');
-
-      const [productsData, movementsData, receiptsData, withdrawalsData, categoriesData, suppliersData] = await Promise.all([
-        FirestoreService.getProducts(),
-        FirestoreService.getMovements(),
-        FirestoreService.getReceipts(),
-        FirestoreService.getWithdrawals(),
-        FirestoreService.getCategories(),
-        FirestoreService.getSuppliers()
-      ]);
-
-      setProducts(productsData || []);
-      setMovements(movementsData || []);
-      setReceipts(receiptsData || []);
-      setWithdrawals(withdrawalsData || []);
-      setCategories(categoriesData || []);
-      setSuppliers(suppliersData || []);
-
+      if (stockContext?.refreshData) {
+        await stockContext.refreshData();
+      }
 
       // Generate realistic recent activities
       const activities: RecentActivity[] = [
@@ -333,7 +444,7 @@ export default function Dashboard() {
           id: '1',
           type: 'movement',
           title: 'การเบิก/การรับพัสดุ',
-          description: `มี ${movementsData?.length || 0} การเคลื่อนไหวในวันนี้`,
+          description: `มี ${movements.length || 0} การเคลื่อนไหวในวันนี้`,
           time: 'เมื่อสักครู่',
           status: 'info',
           icon: <Activity className="h-4 w-4" />
@@ -390,8 +501,23 @@ export default function Dashboard() {
     
     // Auto refresh every 5 minutes
     const interval = setInterval(fetchDashboardData, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
+    
+    // Real-time updates simulation
+    let realTimeInterval: NodeJS.Timeout;
+    if (isRealTimeEnabled) {
+      realTimeInterval = setInterval(() => {
+        // Simulate real-time data updates
+        setLastRealTimeUpdate(new Date());
+        // In a real app, this would be WebSocket or Server-Sent Events
+        fetchDashboardData();
+      }, 30000); // Update every 30 seconds
+    }
+    
+    return () => {
+      clearInterval(interval);
+      if (realTimeInterval) clearInterval(realTimeInterval);
+    };
+  }, [isRealTimeEnabled]);
 
   if (loading) {
     return (
@@ -435,23 +561,50 @@ export default function Dashboard() {
                     <h1 className="text-4xl font-bold text-white drop-shadow-2xl bg-gradient-to-r from-white to-blue-100 bg-clip-text text-transparent">
                       แดชบอร์ด
                     </h1>
-                    <p className="text-white/90 text-xl font-medium drop-shadow-lg">
-                      ภาพรวมระบบจัดการสต็อกและงบประมาณ
-                    </p>
                   </div>
                 </div>
                 <div className="flex items-center space-x-4">
                   <div className="flex items-center space-x-3 bg-white/20 backdrop-blur-md rounded-2xl px-6 py-3 border border-white/30 shadow-xl">
-                    <div className="w-3 h-3 bg-emerald-400 rounded-full animate-pulse shadow-lg"></div>
-                    <span className="text-white text-sm font-semibold drop-shadow-md">ระบบออนไลน์</span>
+                    <div className={`w-3 h-3 rounded-full animate-pulse shadow-lg ${
+                      connectionStatus === 'connected' ? 'bg-emerald-400' : 
+                      connectionStatus === 'reconnecting' ? 'bg-yellow-400' : 'bg-red-400'
+                    }`}></div>
+                    <span className="text-white text-sm font-semibold drop-shadow-md">
+                      {connectionStatus === 'connected' ? 'ระบบออนไลน์' : 
+                       connectionStatus === 'reconnecting' ? 'กำลังเชื่อมต่อ' : 'ระบบออฟไลน์'}
+                    </span>
                   </div>
-                  <Button 
-                    onClick={fetchDashboardData}
-                    className="bg-white/20 backdrop-blur-md border-white/30 hover:bg-white/30 text-white shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl px-6 py-3 font-semibold"
-                  >
-                    <RefreshCw className="mr-2 h-5 w-5" />
-                    รีเฟรช
-                  </Button>
+                  
+                  {/* Widget Controls */}
+                  <div className="flex items-center space-x-2">
+                    <Button 
+                      onClick={() => setIsEditMode(!isEditMode)}
+                      className={`backdrop-blur-md border-white/30 text-white shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl px-4 py-3 font-semibold ${
+                        isEditMode ? 'bg-white/30' : 'bg-white/20 hover:bg-white/30'
+                      }`}
+                    >
+                      <Settings className="mr-2 h-4 w-4" />
+                      {isEditMode ? 'เสร็จสิ้น' : 'แก้ไข'}
+                    </Button>
+                    
+                    <Button 
+                      onClick={isRealTimeEnabled ? disableRealTimeUpdates : enableRealTimeUpdates}
+                      className={`backdrop-blur-md border-white/30 text-white shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl px-4 py-3 font-semibold ${
+                        isRealTimeEnabled ? 'bg-white/30' : 'bg-white/20 hover:bg-white/30'
+                      }`}
+                    >
+                      <Activity className="mr-2 h-4 w-4" />
+                      {isRealTimeEnabled ? 'ปิด Real-time' : 'เปิด Real-time'}
+                    </Button>
+                    
+                    <Button 
+                      onClick={fetchDashboardData}
+                      className="bg-white/20 backdrop-blur-md border-white/30 hover:bg-white/30 text-white shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl px-6 py-3 font-semibold"
+                    >
+                      <RefreshCw className="mr-2 h-5 w-5" />
+                      รีเฟรช
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -459,7 +612,10 @@ export default function Dashboard() {
 
           {/* Key Metrics Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <Card className="group relative overflow-hidden backdrop-blur-lg border-0 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 bg-gradient-to-br from-blue-50 to-indigo-50">
+            <Card 
+              className="group relative overflow-hidden backdrop-blur-lg border-0 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 bg-gradient-to-br from-blue-50 to-indigo-50 cursor-pointer"
+              onClick={() => handleDrillDown('product', 'all', products)}
+            >
               <div className="absolute inset-0 bg-gradient-to-br from-blue-500/20 to-indigo-600/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
               <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-400/10 to-transparent rounded-full -translate-y-16 translate-x-16"></div>
               <CardContent className="p-6 relative z-10">
@@ -473,10 +629,18 @@ export default function Dashboard() {
                     <Package className="h-7 w-7 text-white" />
                   </div>
                 </div>
+                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  <div className="p-1 bg-white/20 rounded-lg backdrop-blur-sm">
+                    <Eye className="h-3 w-3 text-white" />
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
-            <Card className="group relative overflow-hidden backdrop-blur-lg border-0 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 bg-gradient-to-br from-amber-50 to-orange-50">
+            <Card 
+              className="group relative overflow-hidden backdrop-blur-lg border-0 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 bg-gradient-to-br from-amber-50 to-orange-50 cursor-pointer"
+              onClick={() => handleDrillDown('product', 'low-stock', products.filter(p => (p.current_stock || 0) <= (p.min_stock || 0)))}
+            >
               <div className="absolute inset-0 bg-gradient-to-br from-amber-500/20 to-orange-600/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
               <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-amber-400/10 to-transparent rounded-full -translate-y-16 translate-x-16"></div>
               <CardContent className="p-6 relative z-10">
@@ -488,6 +652,11 @@ export default function Dashboard() {
                   </div>
                   <div className="p-4 bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl shadow-lg">
                     <AlertCircle className="h-7 w-7 text-white" />
+                  </div>
+                </div>
+                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  <div className="p-1 bg-white/20 rounded-lg backdrop-blur-sm">
+                    <Eye className="h-3 w-3 text-white" />
                   </div>
                 </div>
               </CardContent>
@@ -521,7 +690,7 @@ export default function Dashboard() {
                     <p className="text-xs text-purple-600 font-medium">มูลค่าสต็อกทั้งหมด</p>
                   </div>
                   <div className="p-4 bg-gradient-to-br from-purple-500 to-violet-600 rounded-2xl shadow-lg">
-                    <DollarSign className="h-7 w-7 text-white" />
+                    <span className="text-2xl font-bold text-white">฿</span>
                   </div>
                 </div>
               </CardContent>
@@ -1017,8 +1186,14 @@ export default function Dashboard() {
           <div className="mt-12 text-center">
             <div className="inline-flex items-center space-x-6 backdrop-blur-md rounded-3xl px-10 py-6 shadow-2xl bg-gradient-to-r from-white/90 to-gray-50/90 border border-white/30">
               <div className="flex items-center space-x-3">
-                <div className="w-4 h-4 bg-gradient-to-r from-emerald-400 to-green-500 rounded-full animate-pulse shadow-lg"></div>
-                <span className="text-sm font-bold text-gray-800">ระบบออนไลน์</span>
+                <div className={`w-4 h-4 rounded-full animate-pulse shadow-lg ${
+                  connectionStatus === 'connected' ? 'bg-gradient-to-r from-emerald-400 to-green-500' : 
+                  connectionStatus === 'reconnecting' ? 'bg-gradient-to-r from-yellow-400 to-orange-500' : 'bg-gradient-to-r from-red-400 to-rose-500'
+                }`}></div>
+                <span className="text-sm font-bold text-gray-800">
+                  {connectionStatus === 'connected' ? 'ระบบออนไลน์' : 
+                   connectionStatus === 'reconnecting' ? 'กำลังเชื่อมต่อ' : 'ระบบออฟไลน์'}
+                </span>
               </div>
               <div className="w-px h-8 bg-gradient-to-b from-gray-300 to-gray-400"></div>
               <div className="flex items-center space-x-3">
@@ -1038,8 +1213,66 @@ export default function Dashboard() {
                   การเคลื่อนไหว: {stats.recentMovements} รายการ
                 </span>
               </div>
+              {isRealTimeEnabled && (
+                <>
+                  <div className="w-px h-8 bg-gradient-to-b from-gray-300 to-gray-400"></div>
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-green-100 rounded-xl">
+                      <Activity className="h-4 w-4 text-green-600" />
+                    </div>
+                    <span className="text-sm font-semibold text-gray-700">
+                      Real-time: {lastRealTimeUpdate.toLocaleString('th-TH')}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
+
+          {/* Drill-down Modal */}
+          {showDrillDown && drillDownData && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+                <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                  <h2 className="text-2xl font-bold text-gray-900">
+                    รายละเอียด {drillDownData.type === 'product' ? 'สินค้า' : 
+                               drillDownData.type === 'category' ? 'หมวดหมู่' :
+                               drillDownData.type === 'supplier' ? 'ผู้จำหน่าย' :
+                               drillDownData.type === 'movement' ? 'การเคลื่อนไหว' :
+                               drillDownData.type === 'receipt' ? 'ใบรับ' : 'ใบเบิก'}
+                  </h2>
+                  <Button 
+                    onClick={closeDrillDown}
+                    variant="outline"
+                    size="sm"
+                    className="rounded-xl"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-gray-700">ID</label>
+                        <p className="text-gray-900">{drillDownData.id}</p>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-gray-700">ประเภท</label>
+                        <p className="text-gray-900">{drillDownData.type}</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700">ข้อมูล</label>
+                      <pre className="bg-gray-50 p-4 rounded-xl text-sm overflow-x-auto">
+                        {JSON.stringify(drillDownData.data, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </Layout>

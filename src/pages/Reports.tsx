@@ -3,7 +3,17 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { BarChart3, TrendingUp, Download, Package, DollarSign, AlertTriangle, FolderOpen, RefreshCw, FileText, TrendingDown, Activity, Filter, Calendar, BarChart, PieChart, LineChart } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { 
+  BarChart3, TrendingUp, Download, Package, DollarSign, AlertTriangle, 
+  FolderOpen, RefreshCw, FileText, TrendingDown, Activity, Filter, 
+  Calendar, BarChart, PieChart, LineChart, Search, Settings, 
+  Eye, EyeOff, ChevronDown, ChevronRight, Clock, Users, 
+  ShoppingCart, Truck, Warehouse, Zap, Target, Award, Printer
+} from 'lucide-react';
 import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart as RechartsLineChart, Line, PieChart as RechartsPieChart, Pie, Cell } from 'recharts';
 import { useStock } from '@/contexts/StockContext';
 import { api } from '@/lib/apiService';
@@ -19,11 +29,10 @@ import { ProductsStyleDataTable as DataTable } from '@/components/ui/products-st
 import { ProductsStylePagination as Pagination } from '@/components/ui/products-style-pagination';
 
 export default function Reports() {
-  const { products, categories, movements } = useStock();
+  const { products, categories, movements, loading } = useStock();
   const { toast } = useToast();
   const [reportType, setReportType] = useState('inventory');
   const [timeRange, setTimeRange] = useState('7days');
-  const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [chartType, setChartType] = useState<'bar' | 'line' | 'pie'>('bar');
   const [currentPage, setCurrentPage] = useState(1);
@@ -35,6 +44,13 @@ export default function Reports() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [dateRange, setDateRange] = useState<'daily' | 'monthly' | 'yearly'>('monthly');
   const [showCharts, setShowCharts] = useState(false);
+  
+  // เพิ่ม state สำหรับฟีเจอร์ใหม่
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+  const [selectedProduct, setSelectedProduct] = useState<string>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [movementType, setMovementType] = useState<'all' | 'in' | 'out'>('all');
 
   // Generate real data for charts from actual database data
   const inventoryData = useMemo(() => {
@@ -186,44 +202,200 @@ export default function Reports() {
     return data;
   }, [movements, products, dateRange]);
 
-  // Generate detailed movement report data
+  // Generate detailed movement report data with advanced filtering
   const detailedMovementData = useMemo(() => {
-    return movements.map(movement => {
+    let filteredMovements = movements;
+    
+    // Filter by date range
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      filteredMovements = movements.filter(movement => {
+        const movementDate = new Date(movement.created_at);
+        return movementDate >= start && movementDate <= end;
+      });
+    }
+    
+    // Filter by product
+    if (selectedProduct && selectedProduct !== 'all') {
+      filteredMovements = filteredMovements.filter(movement => 
+        movement.product_id === selectedProduct
+      );
+    }
+    
+    // Filter by category
+    if (selectedCategory && selectedCategory !== 'all') {
+      filteredMovements = filteredMovements.filter(movement => {
+        const product = products.find(p => p.id === movement.product_id);
+        return product?.category_id === selectedCategory;
+      });
+    }
+    
+    // Filter by movement type
+    if (movementType !== 'all') {
+      filteredMovements = filteredMovements.filter(movement => 
+        movement.type === movementType
+      );
+    }
+    
+    return filteredMovements.map(movement => {
       const product = products.find(p => p.id === movement.product_id);
       const category = categories.find(c => c.id === product?.category_id);
       
+      // ตรวจสอบและแก้ไขวันที่
+      let formattedDate = 'ไม่ระบุวันที่';
+      let formattedTime = 'ไม่ระบุเวลา';
+      
+      try {
+        // ตรวจสอบฟิลด์วันที่หลายแบบ
+        let dateValue = movement.created_at || movement.date || movement.createdAt;
+        
+        if (dateValue) {
+          // แปลงเป็น Date object
+          let date;
+          if (typeof dateValue === 'string') {
+            // ถ้าเป็น string ให้แปลงเป็น Date
+            date = new Date(dateValue);
+          } else if (dateValue.toDate) {
+            // ถ้าเป็น Firestore Timestamp
+            date = dateValue.toDate();
+          } else if (dateValue.seconds) {
+            // ถ้าเป็น object ที่มี seconds
+            date = new Date(dateValue.seconds * 1000);
+          } else {
+            date = new Date(dateValue);
+          }
+          
+          // ตรวจสอบว่าเป็นวันที่ที่ถูกต้อง
+          if (!isNaN(date.getTime()) && date.getFullYear() > 1900) {
+            formattedDate = date.toLocaleDateString('th-TH', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit'
+            });
+            formattedTime = date.toLocaleTimeString('th-TH', {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            });
+          } else {
+            // ถ้าวันที่ไม่ถูกต้อง ให้ใช้วันที่ปัจจุบัน
+            const now = new Date();
+            formattedDate = now.toLocaleDateString('th-TH', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit'
+            });
+            formattedTime = now.toLocaleTimeString('th-TH', {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            });
+          }
+        } else {
+          // ถ้าไม่มีข้อมูลวันที่ ให้ใช้วันที่ปัจจุบัน
+          const now = new Date();
+          formattedDate = now.toLocaleDateString('th-TH', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+          });
+          formattedTime = now.toLocaleTimeString('th-TH', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+          });
+        }
+      } catch (error) {
+        // ถ้าเกิดข้อผิดพลาด ให้ใช้วันที่ปัจจุบัน
+        const now = new Date();
+        formattedDate = now.toLocaleDateString('th-TH', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        });
+        formattedTime = now.toLocaleTimeString('th-TH', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        });
+      }
+
+      // ตรวจสอบและแก้ไขราคา
+      const unitPrice = product?.unit_price || 0;
+      const totalValue = movement.quantity * unitPrice;
+
+      // ตรวจสอบและแก้ไขเหตุผล
+      let reason = 'ไม่ระบุเหตุผล';
+      if (movement.reason) {
+        // แก้ไข undefined ในเหตุผล
+        reason = movement.reason.replace('undefined - ', '').replace('undefined', '');
+        if (reason.trim() === '') {
+          reason = 'ไม่ระบุเหตุผล';
+        }
+      }
+
       return {
         id: movement.id,
-        date: new Date(movement.created_at).toLocaleDateString('th-TH'),
+        date: formattedDate,
+        time: formattedTime,
         productName: product?.name || 'ไม่พบสินค้า',
         productSku: product?.sku || 'ไม่พบ SKU',
         category: category?.name || 'ไม่ระบุหมวดหมู่',
         type: movement.type === 'in' ? 'รับเข้า' : 'เบิกออก',
         quantity: movement.quantity,
-        unitPrice: product?.unit_price || 0,
-        totalValue: movement.quantity * (product?.unit_price || 0),
-        reason: movement.reason || 'ไม่ระบุเหตุผล',
-        createdBy: 'ไม่ระบุผู้ดำเนินการ' // movement.created_by || 'ไม่ระบุผู้ดำเนินการ'
+        unitPrice: unitPrice,
+        totalValue: totalValue,
+        reason: reason,
+        createdBy: movement.created_by || 'ไม่ระบุผู้ดำเนินการ'
       };
-    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [movements, products, categories]);
+    }).sort((a, b) => {
+      // แก้ไขการเรียงลำดับให้ปลอดภัย
+      try {
+        const dateA = new Date(a.date);
+        const dateB = new Date(b.date);
+        if (!isNaN(dateA.getTime()) && !isNaN(dateB.getTime())) {
+          return dateB.getTime() - dateA.getTime();
+        }
+        return 0;
+      } catch (error) {
+        console.error('Error sorting dates:', error);
+        return 0;
+      }
+    });
+  }, [movements, products, categories, startDate, endDate, selectedProduct, selectedCategory, movementType]);
 
-  // Generate inventory summary data
+  // Generate inventory summary data with enhanced stock tracking
   const inventorySummaryData = useMemo(() => {
     return products.map(product => {
       const category = categories.find(c => c.id === product.category_id);
       const productMovements = movements.filter(m => m.product_id === product.id);
       
-      const totalIn = productMovements
+      // Calculate movements by date range if specified
+      let filteredMovements = productMovements;
+      if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        filteredMovements = productMovements.filter(movement => {
+          const movementDate = new Date(movement.created_at);
+          return movementDate >= start && movementDate <= end;
+        });
+      }
+      
+      const totalIn = filteredMovements
         .filter(m => m.type === 'in')
         .reduce((sum, m) => sum + m.quantity, 0);
       
-      const totalOut = productMovements
+      const totalOut = filteredMovements
         .filter(m => m.type === 'out')
         .reduce((sum, m) => sum + m.quantity, 0);
       
       const currentStock = product.current_stock || 0;
       const stockValue = currentStock * (product.unit_price || 0);
+      
+      // Calculate stock turnover rate
+      const avgStock = (totalIn + currentStock) / 2;
+      const turnoverRate = avgStock > 0 ? (totalOut / avgStock) : 0;
       
       return {
         id: product.id,
@@ -236,13 +408,22 @@ export default function Reports() {
         stockValue: stockValue,
         totalIn: totalIn,
         totalOut: totalOut,
-        status: currentStock <= (product.min_stock || 0) ? 'สต็อกต่ำ' : 'ปกติ',
+        turnoverRate: turnoverRate,
+        status: currentStock <= (product.min_stock || 0) ? 'สต็อกต่ำ' : 
+                currentStock <= (product.min_stock || 0) * 1.5 ? 'สต็อกต่ำ' : 'ปกติ',
         lastMovement: productMovements.length > 0 
           ? new Date(Math.max(...productMovements.map(m => new Date(m.created_at).getTime()))).toLocaleDateString('th-TH')
-          : 'ไม่มีการเคลื่อนไหว'
+          : 'ไม่มีการเคลื่อนไหว',
+        // เพิ่มข้อมูลประวัติการเคลื่อนไหว
+        movementHistory: productMovements.slice(0, 5).map(m => ({
+          date: new Date(m.created_at).toLocaleDateString('th-TH'),
+          type: m.type === 'in' ? 'รับเข้า' : 'เบิกออก',
+          quantity: m.quantity,
+          reason: m.reason || 'ไม่ระบุเหตุผล'
+        }))
       };
     });
-  }, [products, categories, movements]);
+  }, [products, categories, movements, startDate, endDate]);
 
   // Filtered and paginated data
   const filteredData = useMemo(() => {
@@ -379,6 +560,18 @@ export default function Reports() {
             title: 'การเคลื่อนไหวล่าสุด',
             sortable: true,
             render: (value) => <div className="text-sm text-gray-600">{value}</div>
+          },
+          {
+            key: 'turnoverRate',
+            title: 'อัตราการหมุนเวียน',
+            sortable: true,
+            render: (value) => (
+              <div className="text-right">
+                <span className="font-semibold text-sm text-blue-700">
+                  {parseFloat(value?.toString() || '0').toFixed(2)}
+                </span>
+              </div>
+            )
           }
         ];
       case 'movements':
@@ -388,6 +581,12 @@ export default function Reports() {
             title: 'วันที่',
             sortable: true,
             render: (value) => <div className="font-medium text-sm text-gray-900">{value}</div>
+          },
+          {
+            key: 'time',
+            title: 'เวลา',
+            sortable: true,
+            render: (value) => <div className="text-sm text-gray-600">{value}</div>
           },
           {
             key: 'productSku',
@@ -507,6 +706,196 @@ export default function Reports() {
     console.log('Sort by:', field);
   };
 
+  const handlePrintInventoryReport = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const currentDate = new Date().toLocaleDateString('th-TH', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    const printContent = `
+      <!DOCTYPE html>
+      <html lang="th">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>รายงานสินค้าคงเหลือ</title>
+        <style>
+          @page {
+            size: A4;
+            margin: 20mm;
+          }
+          
+          body {
+            font-family: 'Sarabun', 'TH Sarabun New', sans-serif;
+            font-size: 14px;
+            line-height: 1.4;
+            color: #333;
+            margin: 0;
+            padding: 0;
+          }
+          
+          .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #2563eb;
+            padding-bottom: 15px;
+          }
+          
+          .header h1 {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1e40af;
+            margin: 0 0 10px 0;
+          }
+          
+          .header h2 {
+            font-size: 18px;
+            font-weight: normal;
+            color: #374151;
+            margin: 0 0 5px 0;
+          }
+          
+          .header .date {
+            font-size: 16px;
+            color: #6b7280;
+            margin: 0;
+          }
+          
+          .table-container {
+            width: 100%;
+            overflow: hidden;
+          }
+          
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+          }
+          
+          th {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white;
+            padding: 12px 8px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 14px;
+            border: 1px solid #1e40af;
+          }
+          
+          td {
+            padding: 10px 8px;
+            border: 1px solid #d1d5db;
+            text-align: center;
+            font-size: 13px;
+          }
+          
+          tr:nth-child(even) {
+            background-color: #f8fafc;
+          }
+          
+          tr:hover {
+            background-color: #e0f2fe;
+          }
+          
+          .number {
+            text-align: right;
+            font-weight: 500;
+          }
+          
+          .sku {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            color: #1e40af;
+          }
+          
+          .product-name {
+            text-align: left;
+            font-weight: 500;
+          }
+          
+          .category {
+            color: #059669;
+            font-weight: 500;
+          }
+          
+          .stock {
+            font-weight: bold;
+            color: #dc2626;
+          }
+          
+          .footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 12px;
+            color: #6b7280;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 15px;
+          }
+          
+          @media print {
+            body { -webkit-print-color-adjust: exact; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>รายงานสินค้าคงเหลือ</h1>
+          <h2>ณ วันที่ ${currentDate}</h2>
+          <p class="date">ศูนย์จัดการธนบัตร นครราชสีมา</p>
+        </div>
+        
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 8%;">ลำดับที่</th>
+                <th style="width: 15%;">รหัส SKU</th>
+                <th style="width: 35%;">ชื่อสินค้า</th>
+                <th style="width: 20%;">หมวดหมู่</th>
+                <th style="width: 22%;">สต๊อกปัจจุบัน</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${inventorySummaryData.map((item, index) => `
+                <tr>
+                  <td class="number">${index + 1}</td>
+                  <td class="sku">${item.sku || '-'}</td>
+                  <td class="product-name">${item.name || '-'}</td>
+                  <td class="category">${item.category || '-'}</td>
+                  <td class="stock">${item.currentStock || 0}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+        
+        <div class="footer">
+          <p>พิมพ์เมื่อ: ${new Date().toLocaleString('th-TH')}</p>
+          <p>จำนวนรายการทั้งหมด: ${inventorySummaryData.length} รายการ</p>
+        </div>
+        
+        <script>
+          window.onload = function() {
+            window.print();
+            window.onafterprint = function() {
+              window.close();
+            };
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+  };
+
   const handleExportReport = () => {
     try {
       // Create report data based on current selection
@@ -516,28 +905,15 @@ export default function Reports() {
       
       switch (reportType) {
         case 'inventory':
-          fileName = `รายงานสต็อกสินค้าทั้งหมด_${new Date().toISOString().split('T')[0]}.csv`;
-          reportTitle = 'รายงานสต็อกสินค้าทั้งหมด';
-          reportData = inventorySummaryData.map(item => ({
-            'SKU': item.sku,
-            'ชื่อสินค้า': item.name,
-            'หมวดหมู่': item.category,
-            'สต็อกปัจจุบัน': item.currentStock,
-            'สต็อกต่ำสุด': item.minStock,
-            'ราคาต่อหน่วย': item.unitPrice,
-            'มูลค่าสต็อก': item.stockValue,
-            'รับเข้าทั้งหมด': item.totalIn,
-            'เบิกออกทั้งหมด': item.totalOut,
-            'สถานะ': item.status,
-            'การเคลื่อนไหวล่าสุด': item.lastMovement
-          }));
-          break;
+          handlePrintInventoryReport();
+          return;
           
         case 'movements':
           fileName = `รายงานการเบิก/การรับพัสดุ_${new Date().toISOString().split('T')[0]}.csv`;
           reportTitle = 'รายงานการเบิก/การรับพัสดุ';
           reportData = detailedMovementData.map(item => ({
             'วันที่': item.date,
+            'เวลา': item.time,
             'SKU': item.productSku,
             'ชื่อสินค้า': item.productName,
             'หมวดหมู่': item.category,
@@ -586,6 +962,10 @@ export default function Reports() {
           `วันที่สร้างรายงาน: ${new Date().toLocaleDateString('th-TH')}`,
           `จำนวนรายการ: ${reportData.length} รายการ`,
           `ช่วงเวลา: ${dateRange === 'daily' ? 'รายวัน' : dateRange === 'monthly' ? 'รายเดือน' : 'รายปี'}`,
+          startDate && endDate ? `ช่วงวันที่: ${startDate} ถึง ${endDate}` : '',
+          selectedProduct && selectedProduct !== 'all' ? `สินค้า: ${products.find(p => p.id === selectedProduct)?.name || 'ไม่ระบุ'}` : '',
+          selectedCategory && selectedCategory !== 'all' ? `หมวดหมู่: ${categories.find(c => c.id === selectedCategory)?.name || 'ไม่ระบุ'}` : '',
+          movementType !== 'all' ? `ประเภทการเคลื่อนไหว: ${movementType === 'in' ? 'รับเข้าเท่านั้น' : 'เบิกออกเท่านั้น'}` : '',
           '', // Empty line
           headers.join(','),
           ...reportData.map(row => 
@@ -597,8 +977,20 @@ export default function Reports() {
               }
               return value;
             }).join(',')
-          )
-        ].join('\n');
+          ),
+          '', // Empty line
+          'สรุปข้อมูล:',
+          reportType === 'inventory' ? [
+            `มูลค่าสต็อกรวม: ฿${inventorySummaryData.reduce((sum, item) => sum + item.stockValue, 0).toLocaleString('th-TH')}`,
+            `จำนวนสินค้าที่สต็อกต่ำ: ${inventorySummaryData.filter(item => item.status === 'สต็อกต่ำ').length} รายการ`,
+            `อัตราการหมุนเวียนเฉลี่ย: ${(inventorySummaryData.reduce((sum, item) => sum + item.turnoverRate, 0) / inventorySummaryData.length).toFixed(2)}`
+          ].join('\n') : '',
+          reportType === 'movements' ? [
+            `จำนวนการเคลื่อนไหวทั้งหมด: ${detailedMovementData.length} รายการ`,
+            `มูลค่ารับเข้าทั้งหมด: ฿${detailedMovementData.filter(item => item.type === 'รับเข้า').reduce((sum, item) => sum + item.totalValue, 0).toLocaleString('th-TH')}`,
+            `มูลค่าเบิกออกทั้งหมด: ฿${detailedMovementData.filter(item => item.type === 'เบิกออก').reduce((sum, item) => sum + item.totalValue, 0).toLocaleString('th-TH')}`
+          ].join('\n') : ''
+        ].filter(line => line !== '').join('\n');
         
         // Create and download file with UTF-8 BOM for Excel
         const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -635,6 +1027,61 @@ export default function Reports() {
   const lowStockProducts = products.filter(p => (p.current_stock || 0) <= (p.min_stock || 0)).length;
   const totalCategories = categories.length;
   const totalMovements = movements.length;
+  
+  // Debug logging
+  console.log('📊 Reports Debug Info:', {
+    reportType,
+    totalProducts,
+    totalMovements,
+    filteredDataLength: filteredData.length,
+    inventorySummaryDataLength: inventorySummaryData.length,
+    detailedMovementDataLength: detailedMovementData.length,
+    products: products.slice(0, 3), // Show first 3 products for debugging
+    movements: movements.slice(0, 3), // Show first 3 movements for debugging
+    searchTerm,
+    startDate,
+    endDate,
+    selectedProduct,
+    selectedCategory,
+    movementType
+  });
+
+  // ตรวจสอบสถานะการโหลดข้อมูล
+  useEffect(() => {
+    console.log('🔍 ตรวจสอบสถานะข้อมูล:', {
+      productsCount: products.length,
+      categoriesCount: categories.length,
+      movementsCount: movements.length,
+      isAuthenticated: true, // ควรมาจาก AuthContext
+      loading: false // ควรมาจาก StockContext
+    });
+  }, [products, categories, movements]);
+  
+  // Additional debug for inventory data
+  if (reportType === 'inventory') {
+    console.log('📦 Inventory Debug:', {
+      inventorySummaryData: inventorySummaryData.slice(0, 3),
+      filteredData: filteredData.slice(0, 3),
+      paginatedData: paginatedData.slice(0, 3),
+      movementsCount: movements.length,
+      productsCount: products.length,
+      categoriesCount: categories.length
+    });
+  }
+
+  // Debug movements data
+  console.log('🔄 Movements Debug:', {
+    totalMovements: movements.length,
+    withdrawalMovements: movements.filter(m => m.reason?.includes('การเบิก')).length,
+    receiptMovements: movements.filter(m => m.reason?.includes('การรับ')).length,
+    sampleMovements: movements.slice(0, 3).map(m => ({
+      id: m.id,
+      product_id: m.product_id,
+      type: m.type,
+      quantity: m.quantity,
+      reason: m.reason
+    }))
+  });
 
   // Define stats cards
   const statsCards: StatCard[] = [
@@ -666,26 +1113,31 @@ export default function Reports() {
 
   return (
     <Layout hideHeader={true}>
-      <div className="min-h-screen w-full">
-        <div className="w-full space-y-4 pb-8 px-4 sm:px-6 lg:px-8">
-      {/* Page Header */}
-      <ProductsStylePageHeader
-        title="รายงานและการวิเคราะห์"
-        searchPlaceholder="ค้นหารายงานหรือข้อมูล..."
-        searchValue={searchTerm}
-        onSearchChange={setSearchTerm}
-        onRefresh={handleRefresh}
-        scannerDetected={false}
-        actionButtons={
-          <div className="flex items-center gap-2">
+      <div className="min-h-screen w-full bg-gradient-to-br from-slate-50 to-blue-50">
+        <div className="w-full space-y-6 pb-8 px-4 sm:px-6 lg:px-8">
+          
+          {/* Modern Header */}
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl">
+                  <BarChart3 className="h-8 w-8 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900">รายงานและการวิเคราะห์</h1>
+                  <p className="text-gray-600 mt-1">ดูข้อมูลและสถิติของระบบจัดการสินค้า</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-3">
             <Button
               variant="outline"
               size="sm"
               onClick={handleFilter}
-              className={`h-9 px-3 rounded-lg transition-all duration-200 ${
+                  className={`h-10 px-4 rounded-lg transition-all duration-200 ${
                 showFilters 
-                  ? 'bg-blue-500 text-white border-blue-500' 
-                  : 'bg-white/10 backdrop-blur-sm border-white/20 hover:bg-white/20 text-white hover:text-white'
+                      ? 'bg-blue-500 text-white border-blue-500 shadow-lg' 
+                      : 'bg-white border-gray-200 hover:bg-gray-50 text-gray-700'
               }`}
             >
               <Filter className="h-4 w-4 mr-2" />
@@ -695,64 +1147,225 @@ export default function Reports() {
               variant="outline"
               size="sm"
               onClick={handleToggleCharts}
-              className={`h-9 px-3 rounded-lg transition-all duration-200 ${
+                  className={`h-10 px-4 rounded-lg transition-all duration-200 ${
                 showCharts 
-                  ? 'bg-green-500 text-white border-green-500' 
-                  : 'bg-white/10 backdrop-blur-sm border-white/20 hover:bg-white/20 text-white hover:text-white'
+                      ? 'bg-green-500 text-white border-green-500 shadow-lg' 
+                      : 'bg-white border-gray-200 hover:bg-gray-50 text-gray-700'
               }`}
             >
               <BarChart3 className="h-4 w-4 mr-2" />
-              เรียกดูชาร์ท
+                  กราฟ
             </Button>
             <Button 
               variant="outline" 
               size="sm"
               onClick={handleRefresh}
-              className="h-9 px-3 rounded-lg bg-white/10 backdrop-blur-sm border-white/20 hover:bg-white/20 text-white hover:text-white transition-all duration-200"
+                  className="h-10 px-4 rounded-lg bg-white border-gray-200 hover:bg-gray-50 text-gray-700 transition-all duration-200"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               รีเฟรช
             </Button>
             <Button 
-              variant="outline"
               size="sm"
               onClick={handleExportReport}
-              className="h-9 px-3 rounded-lg bg-white/10 backdrop-blur-sm border-white/20 hover:bg-white/20 text-white hover:text-white transition-all duration-200"
+                  className="h-10 px-4 rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:from-blue-600 hover:to-purple-700 shadow-lg transition-all duration-200"
             >
-              <Download className="h-4 w-4 mr-2" />
-              ส่งออกรายงาน
+              <Printer className="h-4 w-4 mr-2" />
+                  {reportType === 'inventory' ? 'พิมพ์' : 'ส่งออก'}
             </Button>
           </div>
-        }
-      />
+            </div>
+          </div>
 
       {/* Stats Cards */}
-      <ProductsStyleStatsCards cards={statsCards} />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {statsCards.map((card, index) => (
+              <Card key={index} className="bg-white rounded-xl shadow-lg border-0 overflow-hidden hover:shadow-xl transition-all duration-300 group">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600 mb-1">{card.title}</p>
+                      <p className="text-2xl font-bold text-gray-900">{card.value}</p>
+                      <div className="mt-2">
+                        <Badge variant="outline" className="text-xs">
+                          {index === 0 && "สินค้าทั้งหมด"}
+                          {index === 1 && "มูลค่ารวม"}
+                          {index === 2 && "ต้องเติมสต็อก"}
+                          {index === 3 && "หมวดหมู่"}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className={`p-3 rounded-lg transition-all duration-300 group-hover:scale-110 ${
+                      card.color === 'teal' ? 'bg-teal-100 text-teal-600' :
+                      card.color === 'purple' ? 'bg-purple-100 text-purple-600' :
+                      card.color === 'orange' ? 'bg-orange-100 text-orange-600' :
+                      card.color === 'green' ? 'bg-green-100 text-green-600' :
+                      'bg-blue-100 text-blue-600'
+                    }`}>
+                      {card.icon}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
 
-      {/* Filter Controls */}
-      {showFilters && (
-        <Card className="mb-4">
-          <CardContent className="p-4">
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium">ประเภทรายงาน:</label>
-              <Select value={reportType} onValueChange={setReportType}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                    <SelectItem value="inventory">รายการสินค้าทั้งหมด</SelectItem>
-                    <SelectItem value="movements">รายการเบิกจ่าย/รับ</SelectItem>
-                  <SelectItem value="sales">รายงานการขาย</SelectItem>
-                  <SelectItem value="categories">การวิเคราะห์หมวดหมู่</SelectItem>
-                </SelectContent>
-              </Select>
+          {/* Loading State */}
+          {loading && (
+            <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl shadow-lg border border-blue-200">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-blue-100 rounded-full">
+                    <RefreshCw className="h-6 w-6 text-blue-600 animate-spin" />
               </div>
-              
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium">ช่วงเวลา:</label>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-blue-800 mb-1">กำลังโหลดข้อมูล...</h3>
+                    <p className="text-blue-700">กรุณารอสักครู่ กำลังดึงข้อมูลจาก Firestore</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* No Data Warning - แสดงเฉพาะเมื่อไม่มีข้อมูลจริง */}
+          {!loading && products.length === 0 && (
+            <Card className="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-2xl shadow-lg border border-yellow-200">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-yellow-100 rounded-full">
+                    <AlertTriangle className="h-6 w-6 text-yellow-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-yellow-800 mb-1">ยังไม่มีข้อมูลในระบบ</h3>
+                    <p className="text-yellow-700">กรุณาเพิ่มสินค้าและหมวดหมู่ในระบบก่อนดูรายงาน</p>
+                    <div className="mt-2 text-sm text-yellow-600">
+                      <p>ข้อมูลที่ตรวจสอบ:</p>
+                      <ul className="list-disc list-inside ml-4">
+                        <li>สินค้า: {products.length} รายการ</li>
+                        <li>หมวดหมู่: {categories.length} รายการ</li>
+                        <li>การเคลื่อนไหว: {movements.length} รายการ</li>
+                      </ul>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => window.location.href = '/products'}
+                    className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                  >
+                    <Package className="h-4 w-4 mr-2" />
+                    เพิ่มสินค้า
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Quick Actions */}
+          <Card className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl shadow-lg border border-blue-100">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-xl font-semibold text-gray-900">การดำเนินการด่วน</CardTitle>
+              <p className="text-gray-600">เครื่องมือที่ใช้บ่อยสำหรับการวิเคราะห์ข้อมูล</p>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Button
+                  variant="outline"
+                  className="h-16 flex-col gap-2 bg-white hover:bg-blue-50 border-blue-200 hover:border-blue-300"
+                  onClick={() => {
+                    setReportType('inventory');
+                    setShowFilters(true);
+                  }}
+                >
+                  <Warehouse className="h-6 w-6 text-blue-600" />
+                  <span className="text-sm font-medium">ยอดคงเหลือ</span>
+                </Button>
+                
+                <Button
+                  variant="outline"
+                  className="h-16 flex-col gap-2 bg-white hover:bg-green-50 border-green-200 hover:border-green-300"
+                  onClick={() => {
+                    setReportType('movements');
+                    setShowFilters(true);
+                  }}
+                >
+                  <Activity className="h-6 w-6 text-green-600" />
+                  <span className="text-sm font-medium">การเคลื่อนไหว</span>
+                </Button>
+                
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Report Type Selection */}
+          <Card className="bg-white rounded-2xl shadow-lg border border-gray-100">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-xl font-semibold text-gray-900">เลือกประเภทรายงาน</CardTitle>
+              <p className="text-gray-600">เลือกประเภทรายงานที่ต้องการดู</p>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Inventory Report */}
+                <div 
+                  className={`p-6 rounded-xl border-2 cursor-pointer transition-all duration-300 hover:shadow-lg ${
+                    reportType === 'inventory' 
+                      ? 'border-blue-500 bg-blue-50 shadow-lg' 
+                      : 'border-gray-200 bg-white hover:border-blue-300'
+                  }`}
+                  onClick={() => setReportType('inventory')}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`p-3 rounded-lg ${
+                      reportType === 'inventory' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      <Warehouse className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900">ยอดสินค้าคงเหลือ</h3>
+                      <p className="text-sm text-gray-600">ดูสต็อกสินค้าทั้งหมด</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Movements Report */}
+                <div 
+                  className={`p-6 rounded-xl border-2 cursor-pointer transition-all duration-300 hover:shadow-lg ${
+                    reportType === 'movements' 
+                      ? 'border-green-500 bg-green-50 shadow-lg' 
+                      : 'border-gray-200 bg-white hover:border-green-300'
+                  }`}
+                  onClick={() => setReportType('movements')}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`p-3 rounded-lg ${
+                      reportType === 'movements' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      <Activity className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900">การเบิก/การรับ</h3>
+                      <p className="text-sm text-gray-600">ประวัติการเคลื่อนไหว</p>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Advanced Filters */}
+          {showFilters && (
+            <Card className="bg-white rounded-2xl shadow-lg border border-gray-100">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-xl font-semibold text-gray-900">ตัวกรองขั้นสูง</CardTitle>
+                <p className="text-gray-600">ปรับแต่งการแสดงผลตามต้องการ</p>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  {/* Basic Filters */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-gray-700">ช่วงเวลา</Label>
                 <Select value={dateRange} onValueChange={(value) => setDateRange(value as 'daily' | 'monthly' | 'yearly')}>
-                  <SelectTrigger className="w-32">
+                        <SelectTrigger className="w-full">
                     <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -763,10 +1376,10 @@ export default function Reports() {
               </Select>
               </div>
               
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium">ประเภทกราฟ:</label>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-gray-700">ประเภทกราฟ</Label>
                 <Select value={chartType} onValueChange={(value) => setChartType(value as 'bar' | 'line' | 'pie')}>
-                  <SelectTrigger className="w-32">
+                        <SelectTrigger className="w-full">
                     <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -775,6 +1388,118 @@ export default function Reports() {
                     <SelectItem value="pie">วงกลม</SelectItem>
                 </SelectContent>
               </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-gray-700">ค้นหา</Label>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input
+                          placeholder="ค้นหาสินค้าหรือข้อมูล..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="pl-10"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Advanced Filters */}
+                  <div className="border-t pt-6">
+                    <h4 className="text-lg font-semibold text-gray-900 mb-4">ตัวกรองเพิ่มเติม</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {/* Date Range Filter */}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-700">ช่วงวันที่</Label>
+                        <div className="space-y-2">
+                          <Input
+                            type="date"
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            className="w-full"
+                            placeholder="วันที่เริ่มต้น"
+                          />
+                          <Input
+                            type="date"
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            className="w-full"
+                            placeholder="วันที่สิ้นสุด"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Product Filter */}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-700">สินค้า</Label>
+                        <Select value={selectedProduct} onValueChange={setSelectedProduct}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="เลือกสินค้า" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">ทั้งหมด</SelectItem>
+                            {products.map(product => (
+                              <SelectItem key={product.id} value={product.id}>
+                                {product.name} ({product.sku})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Category Filter */}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-700">หมวดหมู่</Label>
+                        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="เลือกหมวดหมู่" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">ทั้งหมด</SelectItem>
+                            {categories.map(category => (
+                              <SelectItem key={category.id} value={category.id}>
+                                {category.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Movement Type Filter */}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-700">ประเภทการเคลื่อนไหว</Label>
+                        <Select value={movementType} onValueChange={(value) => setMovementType(value as 'all' | 'in' | 'out')}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">ทั้งหมด</SelectItem>
+                            <SelectItem value="in">รับเข้าเท่านั้น</SelectItem>
+                            <SelectItem value="out">เบิกออกเท่านั้น</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {/* Clear Filters Button */}
+                    <div className="flex justify-end mt-6">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setStartDate('');
+                          setEndDate('');
+                          setSelectedProduct('all');
+                          setSelectedCategory('all');
+                          setMovementType('all');
+                          setSearchTerm('');
+                        }}
+                        className="px-6"
+                      >
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        ล้างตัวกรอง
+                      </Button>
+                    </div>
               </div>
             </div>
           </CardContent>
@@ -783,9 +1508,47 @@ export default function Reports() {
 
       {/* Data Table */}
       {(reportType === 'inventory' || reportType === 'movements') && (
+            <>
+              {!loading && products.length > 0 && filteredData.length > 0 ? (
+                <Card className="bg-white rounded-2xl shadow-lg border border-gray-100">
+                  <CardHeader className="pb-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-xl font-semibold text-gray-900">
+                          {reportType === 'inventory' ? "รายงานยอดสินค้าคงเหลือ" : "รายงานการเบิก/การรับ"}
+                        </CardTitle>
+                        <p className="text-gray-600 mt-1">พบ {filteredData.length} รายการ</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="px-3 py-1">
+                          <Activity className="h-4 w-4 mr-1" />
+                          {filteredData.length} รายการ
+                        </Badge>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleExportReport}
+                          className="px-4"
+                        >
+                          {reportType === 'inventory' ? (
+                            <>
+                              <Printer className="h-4 w-4 mr-2" />
+                              พิมพ์
+                            </>
+                          ) : (
+                            <>
+                              <Download className="h-4 w-4 mr-2" />
+                              ส่งออก
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
         <DataTable
-          title={reportType === 'inventory' ? "รายการสินค้าทั้งหมด" : "รายการเบิกจ่าย/รับ"}
-          description={`พบ ${filteredData.length} รายการ`}
+                      title=""
+                      description=""
           data={paginatedData}
           columns={getColumns()}
           currentViewMode={viewMode}
@@ -807,6 +1570,125 @@ export default function Reports() {
           currentPage={currentPage}
           totalPages={Math.ceil(filteredData.length / itemsPerPage)}
         />
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card className="bg-white rounded-2xl shadow-lg border border-gray-100">
+                  <CardContent className="p-12">
+                    <div className="text-center">
+                      <div className="p-4 bg-gray-100 rounded-full w-20 h-20 mx-auto mb-6 flex items-center justify-center">
+                        <Package className="h-10 w-10 text-gray-400" />
+                      </div>
+                      <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                        {reportType === 'inventory' ? "ไม่พบข้อมูลสินค้า" : "ไม่พบข้อมูลการเคลื่อนไหว"}
+                      </h3>
+                      <p className="text-gray-600 mb-6 max-w-md mx-auto">
+                        {reportType === 'inventory' 
+                          ? products.length === 0 
+                            ? "ยังไม่มีสินค้าในระบบ กรุณาเพิ่มสินค้าก่อนดูรายงาน"
+                            : "ไม่พบข้อมูลสินค้าตามตัวกรองที่เลือก ลองเปลี่ยนตัวกรองหรือล้างตัวกรอง"
+                          : movements.length === 0
+                            ? "ยังไม่มีการเคลื่อนไหวสินค้าในระบบ กรุณาเพิ่มการเบิก/รับสินค้าก่อนดูรายงาน"
+                            : "ไม่พบข้อมูลการเคลื่อนไหวตามตัวกรองที่เลือก ลองเปลี่ยนตัวกรองหรือล้างตัวกรอง"
+                        }
+                      </p>
+                      <div className="flex justify-center gap-3">
+                        <Button
+                          onClick={handleRefresh}
+                          variant="outline"
+                          className="px-6"
+                        >
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          รีเฟรช
+                        </Button>
+                        {reportType === 'inventory' && products.length === 0 && (
+                          <Button
+                            onClick={() => window.location.href = '/products'}
+                            className="px-6 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white"
+                          >
+                            <Package className="h-4 w-4 mr-2" />
+                            เพิ่มสินค้า
+                          </Button>
+                        )}
+                        {reportType === 'movements' && movements.length === 0 && (
+                          <Button
+                            onClick={() => window.location.href = '/movements'}
+                            className="px-6 bg-gradient-to-r from-green-500 to-blue-600 hover:from-green-600 hover:to-blue-700 text-white"
+                          >
+                            <Activity className="h-4 w-4 mr-2" />
+                            เพิ่มการเคลื่อนไหว
+                          </Button>
+                        )}
+                        {(reportType === 'inventory' && products.length > 0) || (reportType === 'movements' && movements.length > 0) ? (
+                          <Button
+                            onClick={() => {
+                              setStartDate('');
+                              setEndDate('');
+                              setSelectedProduct('all');
+                              setSelectedCategory('all');
+                              setMovementType('all');
+                              setSearchTerm('');
+                            }}
+                            className="px-6 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white"
+                          >
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            ล้างตัวกรอง
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
+
+          {/* Show data for other report types */}
+          {false && (
+            <Card className="bg-white rounded-2xl shadow-lg border border-gray-100">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-xl font-semibold text-gray-900">
+                  {reportType === 'sales' && "รายงานการขาย"}
+                  {reportType === 'categories' && "การวิเคราะห์หมวดหมู่"}
+                </CardTitle>
+                <p className="text-gray-600">
+                  {reportType === 'sales' && "ดูกราฟและสถิติการขาย"}
+                  {reportType === 'categories' && "วิเคราะห์ข้อมูลแยกตามหมวดหมู่"}
+                </p>
+              </CardHeader>
+              <CardContent className="p-8">
+                <div className="text-center">
+                  <div className="p-4 bg-gradient-to-r from-blue-100 to-purple-100 rounded-full w-20 h-20 mx-auto mb-6 flex items-center justify-center">
+                    <BarChart3 className="h-10 w-10 text-blue-600" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    {reportType === 'sales' && "รายงานการขาย"}
+                    {reportType === 'categories' && "การวิเคราะห์หมวดหมู่"}
+                  </h3>
+                  <p className="text-gray-600 mb-6 max-w-md mx-auto">
+                    {reportType === 'sales' && "ใช้ปุ่ม 'เรียกดูชาร์ท' เพื่อดูกราฟการขายและสถิติ"}
+                    {reportType === 'categories' && "ใช้ปุ่ม 'เรียกดูชาร์ท' เพื่อดูการวิเคราะห์หมวดหมู่"}
+                  </p>
+                  <div className="flex justify-center gap-3">
+                    <Button
+                      onClick={handleToggleCharts}
+                      className="px-6 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white"
+                    >
+                      <BarChart3 className="h-4 w-4 mr-2" />
+                      เรียกดูชาร์ท
+                    </Button>
+                    <Button
+                      onClick={handleExportReport}
+                      variant="outline"
+                      className="px-6"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      ส่งออก
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
       )}
 
       {/* Charts for other report types */}
@@ -857,7 +1739,7 @@ export default function Reports() {
             </Card>
           )}
 
-          {reportType === 'sales' && (
+          {false && reportType === 'sales' && (
             <Card className="bg-gradient-card shadow-card">
               <CardHeader>
                 <CardTitle className="text-lg sm:text-xl">ยอดขาย vs การซื้อ</CardTitle>
@@ -903,7 +1785,7 @@ export default function Reports() {
           )}
 
 
-          {reportType === 'categories' && (
+          {false && reportType === 'categories' && (
             <Card className="bg-gradient-card shadow-card">
               <CardHeader>
                 <CardTitle className="text-lg sm:text-xl">การวิเคราะห์หมวดหมู่</CardTitle>
@@ -972,8 +1854,8 @@ export default function Reports() {
         />
       )}
 
-      {/* Charts for inventory report */}
-      {showCharts && reportType === 'inventory' && (
+      {/* Charts for inventory report - Disabled */}
+      {false && showCharts && reportType === 'inventory' && (
         <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
               <Card className="bg-gradient-card shadow-card">

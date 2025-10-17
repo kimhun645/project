@@ -305,7 +305,7 @@ export function AddProductDialogWithResponsiveModal({
       open={open}
       onOpenChange={handleOpenChange}
       title="เพิ่มสินค้าใหม่"
-      description="สร้างสินค้าใหม่ในระบบจัดการคลังสินค้า"
+      description="สร้างสินค้าใหม่ในระบบจัดการพัสดุ"
       icon={<Package className="h-6 w-6 text-white" />}
       trigger={trigger}
       size={size}

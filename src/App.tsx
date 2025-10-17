@@ -10,6 +10,7 @@ import { PageLoader, NavigationLoader } from './components/Layout/PageLoader';
 import { PageTransition } from './components/Layout/PageTransition';
 import { SessionWarningDialog } from './components/Dialogs/SessionWarningDialog';
 import { offlineManager } from './lib/offlineManager';
+import { AdminOnly, ManagerAndAdmin } from './components/RoleGuard';
 
 // Lazy load components
 const Login = React.lazy(() => import('./pages/Login'));
@@ -146,17 +147,21 @@ function AppContent() {
         {
           path: "approval",
           element: (
-            <Suspense fallback={<LoadingSpinner />}>
-              <ApprovalPage />
-            </Suspense>
+            <ManagerAndAdmin>
+              <Suspense fallback={<LoadingSpinner />}>
+                <ApprovalPage />
+              </Suspense>
+            </ManagerAndAdmin>
           ),
         },
         {
           path: "approval/:request_id",
           element: (
-            <Suspense fallback={<LoadingSpinner />}>
-              <ApprovalPage />
-            </Suspense>
+            <ManagerAndAdmin>
+              <Suspense fallback={<LoadingSpinner />}>
+                <ApprovalPage />
+              </Suspense>
+            </ManagerAndAdmin>
           ),
         },
         {
@@ -178,9 +183,11 @@ function AppContent() {
         {
           path: "settings",
           element: (
-            <Suspense fallback={<LoadingSpinner />}>
-              <Settings />
-            </Suspense>
+            <AdminOnly>
+              <Suspense fallback={<LoadingSpinner />}>
+                <Settings />
+              </Suspense>
+            </AdminOnly>
           ),
         },
         {

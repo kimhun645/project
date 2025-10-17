@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { FirestoreService } from '@/lib/firestoreService';
+import { z } from 'zod';
 import { useBarcodeScanner } from '@/hooks/use-barcode-scanner';
 
 interface ProductForWithdrawal {
@@ -286,19 +287,36 @@ export function WithdrawalDialog({ onWithdrawalAdded }: WithdrawalDialogProps) {
       return;
     }
     
-    if (!formData.withdrawal_no || !formData.withdrawal_date || !formData.requester_name) {
-      toast({
-        title: "กรุณากรอกข้อมูลให้ครบถ้วน",
-        description: "กรุณาระบุเลขที่เบิก วันที่ และชื่อผู้เบิก",
-        variant: "destructive",
-      });
-      return;
-    }
+    // Strong validation with zod
+    const itemSchema = z.object({
+      id: z.string().min(1),
+      product_id: z.string().min(1),
+      product_name: z.string().min(1),
+      product_sku: z.string().optional(),
+      quantity: z.number().int().positive(),
+      unit: z.string().min(1),
+      reason: z.string().min(1)
+    });
 
-    if (withdrawalItems.length === 0) {
+    const withdrawalSchema = z.object({
+      withdrawal_no: z.string().min(1),
+      withdrawal_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      requester_name: z.string().min(1),
+      department: z.string().optional(),
+      notes: z.string().optional(),
+      items: z.array(itemSchema).min(1)
+    });
+
+    const parsed = withdrawalSchema.safeParse({
+      ...formData,
+      items: withdrawalItems
+    });
+
+    if (!parsed.success) {
+      const firstErr = parsed.error.issues?.[0];
       toast({
-        title: "กรุณาเพิ่มรายการสินค้า",
-        description: "กรุณาเพิ่มสินค้าที่ต้องการเบิก",
+        title: "ข้อมูลไม่ถูกต้อง",
+        description: firstErr ? `${firstErr.path.join('.')}: ${firstErr.message}` : 'กรุณาตรวจสอบข้อมูลอีกครั้ง',
         variant: "destructive",
       });
       return;
@@ -325,24 +343,9 @@ export function WithdrawalDialog({ onWithdrawalAdded }: WithdrawalDialogProps) {
       
       await FirestoreService.createWithdrawal(withdrawalData);
 
-      // Update product stocks
+      // Transactional stock decrease per item
       for (const item of withdrawalItems) {
-        const product = await FirestoreService.getProduct(item.product_id);
-        if (product) {
-          const newStock = (product.current_stock || 0) - item.quantity;
-          
-          console.log('📊 Updating stock for product:', {
-            productId: item.product_id,
-            current: product.current_stock,
-            quantity: item.quantity,
-            newStock: newStock
-          });
-
-          await FirestoreService.updateProduct(item.product_id, {
-            current_stock: newStock
-          });
-          console.log('✅ Stock updated successfully for product:', item.product_id);
-        }
+        await FirestoreService.updateProductStockTransactional(item.product_id, -item.quantity);
       }
 
       toast({
@@ -356,14 +359,9 @@ export function WithdrawalDialog({ onWithdrawalAdded }: WithdrawalDialogProps) {
 
     } catch (error) {
       console.error('❌ Error creating withdrawal:', error);
-      console.error('❌ Error details:', {
-        message: error.message,
-        code: error.code,
-        stack: error.stack
-      });
       toast({
         title: "เกิดข้อผิดพลาด",
-        description: `ไม่สามารถบันทึกข้อมูลได้: ${error.message || 'Unknown error'}`,
+        description: `ไม่สามารถบันทึกข้อมูลได้: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variant: "destructive",
       });
     } finally {

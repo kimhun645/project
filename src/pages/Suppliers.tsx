@@ -10,6 +10,7 @@ import { AddSupplierDialog } from '@/components/Dialogs/AddSupplierDialog';
 import { EditSupplierDialog } from '@/components/Dialogs/EditSupplierDialog';
 import { useToast } from '@/hooks/use-toast';
 import { useBarcodeScanner } from '@/hooks/use-barcode-scanner';
+import { useStock } from '@/contexts/StockContext';
 import {
   ProductsStylePageLayout,
   ProductsStylePageHeader,
@@ -23,9 +24,8 @@ import {
 } from '@/components/ui/shared-components';
 
 export default function Suppliers() {
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [productCounts, setProductCounts] = useState<Record<string, number>>({});
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -43,6 +43,26 @@ export default function Suppliers() {
   const [statusFilter, setStatusFilter] = useState('all');
   
   const { toast } = useToast();
+
+  // ใช้ข้อมูลจาก StockContext แทนการ fetch เอง
+  const stockContext = useStock();
+  const suppliers = stockContext?.suppliers || [];
+  const refreshData = stockContext?.refreshData;
+
+  const fetchSuppliers = async () => {
+    try {
+      if (refreshData) {
+        await refreshData();
+      }
+    } catch (error) {
+      console.error('Error loading suppliers:', error);
+      toast({
+        title: "เกิดข้อผิดพลาด",
+        description: "ไม่สามารถโหลดข้อมูลผู้จัดหาได้",
+        variant: "destructive",
+      });
+    }
+  };
 
   // Barcode scanner support
   const { scannerDetected, lastScannedCode } = useBarcodeScanner({
@@ -140,30 +160,6 @@ export default function Suppliers() {
   const activeSuppliers = Object.values(productCounts).filter(count => count > 0).length;
   const totalProducts = Object.values(productCounts).reduce((sum, count) => sum + count, 0);
   const efficiency = totalSuppliers > 0 ? Math.round((activeSuppliers / totalSuppliers) * 100) : 0;
-
-  const fetchSuppliers = async () => {
-    try {
-      const { FirestoreService } = await import('@/lib/firestoreService');
-      const suppliersData = await FirestoreService.getSuppliers();
-      const productsData = await FirestoreService.getProducts();
-
-      const counts: Record<string, number> = {};
-      productsData.forEach(product => {
-        counts[product.supplier_id] = (counts[product.supplier_id] || 0) + 1;
-      });
-
-      setSuppliers(suppliersData || []);
-      setProductCounts(counts);
-    } catch (error) {
-      toast({
-        title: "เกิดข้อผิดพลาด",
-        description: "ไม่สามารถโหลดข้อมูลผู้จัดหาได้",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleEditSupplier = (supplier: Supplier) => {
     setEditingSupplier(supplier);
@@ -317,11 +313,6 @@ export default function Suppliers() {
       color: efficiency >= 80 ? "green" : efficiency >= 60 ? "orange" : "red"
     }
   ];
-
-  useEffect(() => {
-    fetchSuppliers();
-    initializeSuppliersCollection();
-  }, []);
 
   const initializeSuppliersCollection = async () => {
     try {
