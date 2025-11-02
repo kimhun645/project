@@ -228,7 +228,8 @@ const toISOString = (timestamp: any): string => {
 export class FirestoreService {
   // Cache for frequently accessed data
   private static cache = new Map<string, { data: any; timestamp: number }>();
-  private static CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+  private static CACHE_DURATION = 2 * 60 * 1000; // 2 minutes (reduced for fresher data)
+  private static MAX_CACHE_SIZE = 50; // Limit cache entries to prevent memory issues
 
   private static getCachedData<T>(key: string): T | null {
     const cached = this.cache.get(key);
@@ -239,7 +240,24 @@ export class FirestoreService {
   }
 
   private static setCachedData<T>(key: string, data: T): void {
+    // Clean up old cache entries if cache is too large
+    if (this.cache.size >= this.MAX_CACHE_SIZE) {
+      const oldestKey = Array.from(this.cache.entries())
+        .sort((a, b) => a[1].timestamp - b[1].timestamp)[0]?.[0];
+      if (oldestKey) {
+        this.cache.delete(oldestKey);
+      }
+    }
     this.cache.set(key, { data, timestamp: Date.now() });
+  }
+
+  // Clear cache for specific key (useful after mutations)
+  static clearCache(key?: string): void {
+    if (key) {
+      this.cache.delete(key);
+    } else {
+      this.cache.clear();
+    }
   }
 
   static async getProducts(retryCount = 0, limitCount: number = 100): Promise<Product[]> {
@@ -425,6 +443,9 @@ export class FirestoreService {
       const newProduct = await this.getProduct(docRef.id);
       if (!newProduct) throw new Error('Failed to create product');
 
+      // Clear products cache after creating
+      this.clearCache('products');
+
       // บันทึก logs ถ้ามี userInfo
       if (userInfo) {
         try {
@@ -481,6 +502,9 @@ export class FirestoreService {
       console.log('🔄 Updating product with clean data:', id, cleanProduct);
       await updateDoc(docRef, cleanProduct);
       console.log('✅ Product updated successfully:', id);
+
+      // Clear products cache after updating
+      this.clearCache('products');
 
       // บันทึก logs ถ้ามี userInfo
       if (userInfo) {
@@ -557,6 +581,9 @@ export class FirestoreService {
       
       // ลบสินค้า
       await deleteDoc(productRef);
+      
+      // Clear products cache after deleting
+      this.clearCache('products');
       
       // บันทึก logs ถ้ามี userInfo
       if (userInfo) {

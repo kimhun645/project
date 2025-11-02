@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useMemo, useCallback } from 'react';
 import { StockStats, StockFilter } from '@/types/stock';
 import { api, type Product, type Category, type Supplier, type Movement as StockMovement } from '@/lib/apiService';
 import { useAuth } from './AuthContext';
@@ -174,8 +174,8 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(stockReducer, initialState);
   const { currentUser } = useAuth();
 
-  // Load data from database
-  const refreshData = async () => {
+  // Load data from database - memoized with useCallback
+  const refreshData = useCallback(async () => {
     if (!currentUser) {
       console.log('User not authenticated, skipping data load');
       return;
@@ -267,7 +267,7 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
         receipts: receipts.length
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error loading data:', error);
       
       // แสดงข้อผิดพลาดที่เฉพาะเจาะจง
@@ -283,7 +283,7 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
-  };
+  }, [currentUser]);
 
   useEffect(() => {
     console.log('🔐 Auth state changed:', { currentUser: !!currentUser, email: currentUser?.email });
@@ -297,13 +297,13 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: 'SET_SUPPLIERS', payload: [] });
       dispatch({ type: 'SET_MOVEMENTS', payload: [] });
     }
-  }, [currentUser]);
+  }, [currentUser, refreshData]);
 
   useEffect(() => {
     dispatch({ type: 'CALCULATE_STATS' });
   }, [state.products, state.movements]);
 
-  const addProduct = (productData: Omit<Product, 'id' | 'created_at' | 'updated_at'>) => {
+  const addProduct = useCallback((productData: Omit<Product, 'id' | 'created_at' | 'updated_at'>) => {
     const product: Product = {
       ...productData,
       id: Date.now().toString(),
@@ -311,53 +311,53 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
       updated_at: new Date().toISOString(),
     };
     dispatch({ type: 'ADD_PRODUCT', payload: product });
-  };
+  }, []);
 
-  const updateProduct = (product: Product) => {
+  const updateProduct = useCallback((product: Product) => {
     dispatch({ type: 'UPDATE_PRODUCT', payload: { ...product, updated_at: new Date().toISOString() } });
-  };
+  }, []);
 
-  const deleteProduct = (id: string) => {
+  const deleteProduct = useCallback((id: string) => {
     dispatch({ type: 'DELETE_PRODUCT', payload: id });
-  };
+  }, []);
 
-  const addStockMovement = (movementData: Omit<StockMovement, 'id' | 'created_at'>) => {
+  const addStockMovement = useCallback((movementData: Omit<StockMovement, 'id' | 'created_at'>) => {
     const movement: StockMovement = {
       ...movementData,
       id: Date.now().toString(),
       created_at: new Date().toISOString(),
     };
     dispatch({ type: 'ADD_MOVEMENT', payload: movement });
-  };
+  }, []);
 
-  const addCategory = (categoryData: Omit<Category, 'id'>) => {
+  const addCategory = useCallback((categoryData: Omit<Category, 'id'>) => {
     const category: Category = {
       ...categoryData,
       id: Date.now().toString(),
     };
     dispatch({ type: 'ADD_CATEGORY', payload: category });
-  };
+  }, []);
 
-  const addSupplier = (supplierData: Omit<Supplier, 'id'>) => {
+  const addSupplier = useCallback((supplierData: Omit<Supplier, 'id'>) => {
     const supplier: Supplier = {
       ...supplierData,
       id: Date.now().toString(),
     };
     dispatch({ type: 'ADD_SUPPLIER', payload: supplier });
-  };
+  }, []);
 
-  const setFilter = (filter: StockFilter) => {
+  const setFilter = useCallback((filter: StockFilter) => {
     dispatch({ type: 'SET_FILTER', payload: filter });
-  };
+  }, []);
 
-  const getStockLevel = (product: Product): 'high' | 'medium' | 'low' | 'out' => {
+  const getStockLevel = useCallback((product: Product): 'high' | 'medium' | 'low' | 'out' => {
     if ((product.current_stock || 0) === 0) return 'out';
     if ((product.current_stock || 0) <= (product.min_stock || 0)) return 'low';
     if ((product.current_stock || 0) <= (product.min_stock || 0) * 2) return 'medium';
     return 'high';
-  };
+  }, []);
 
-  const getFilteredProducts = () => {
+  const getFilteredProducts = useCallback(() => {
     let filtered = [...state.products];
 
     if (state.filter.searchTerm) {
@@ -378,28 +378,54 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (state.filter.stockLevel) {
-      filtered = filtered.filter(product => getStockLevel(product) === state.filter.stockLevel);
+      // Inline getStockLevel logic to avoid dependency issue
+      filtered = filtered.filter(product => {
+        const stock = product.current_stock || 0;
+        const minStock = product.min_stock || 0;
+        let level: 'high' | 'medium' | 'low' | 'out';
+        if (stock === 0) level = 'out';
+        else if (stock <= minStock) level = 'low';
+        else if (stock <= minStock * 2) level = 'medium';
+        else level = 'high';
+        return level === state.filter.stockLevel;
+      });
     }
 
     return filtered;
-  };
+  }, [state.products, state.filter]);
+
+  // Memoize context value to prevent unnecessary re-renders
+  const contextValue = useMemo<StockContextValue>(
+    () => ({
+      ...state,
+      addProduct,
+      updateProduct,
+      deleteProduct,
+      addStockMovement,
+      addCategory,
+      addSupplier,
+      setFilter,
+      getFilteredProducts,
+      refreshData,
+      getStockLevel,
+    }),
+    [
+      state,
+      addProduct,
+      updateProduct,
+      deleteProduct,
+      addStockMovement,
+      addCategory,
+      addSupplier,
+      setFilter,
+      getFilteredProducts,
+      refreshData,
+      getStockLevel,
+    ]
+  );
 
   return (
-    <StockContext.Provider
-      value={{
-        ...state,
-        addProduct,
-        updateProduct,
-        deleteProduct,
-        addStockMovement,
-        addCategory,
-        addSupplier,
-        setFilter,
-        getFilteredProducts,
-        refreshData,
-        getStockLevel,
-      }}
-    >
+    <StockContext.Provider value={contextValue}>
       {children}
     </StockContext.Provider>
   );

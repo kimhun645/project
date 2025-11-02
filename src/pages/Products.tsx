@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -50,6 +50,12 @@ export default function Products() {
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
 
+  // ใช้ข้อมูลจาก StockContext แทนการ fetch เอง - ต้องประกาศก่อนใช้งาน
+  const stockContext = useStock();
+  const products = stockContext?.products || [];
+  const categories = stockContext?.categories || [];
+  const refreshData = stockContext?.refreshData;
+
   // Barcode scanner support
   const { scannerDetected, lastScannedCode } = useBarcodeScanner({
     onScan: (scannedCode) => {
@@ -64,80 +70,82 @@ export default function Products() {
     timeout: 100
   });
 
-  // Filter and sort products
-  const filteredProducts = products
-    .filter(product => {
-    const matchesSearch = 
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.description?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesCategory = categoryFilter === 'all' || product.category_id === categoryFilter;
-    
-    let matchesStock = true;
-    if (stockFilter === 'low') {
-      matchesStock = (product.current_stock || 0) <= (product.min_stock || 0);
-    } else if (stockFilter === 'out') {
-      matchesStock = (product.current_stock || 0) === 0;
-    } else if (stockFilter === 'normal') {
-      matchesStock = (product.current_stock || 0) > (product.min_stock || 0);
-    }
-    
-    return matchesSearch && matchesCategory && matchesStock;
-    })
-    .sort((a, b) => {
-      const aValue = a[sortField];
-      const bValue = b[sortField];
-      
-      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
-      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
+  // Memoized filter and sort products
+  const filteredProducts = useMemo(() => {
+    return products
+      .filter(product => {
+        const matchesSearch = 
+          product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          product.description?.toLowerCase().includes(searchTerm.toLowerCase());
+        
+        const matchesCategory = categoryFilter === 'all' || product.category_id === categoryFilter;
+        
+        let matchesStock = true;
+        if (stockFilter === 'low') {
+          matchesStock = (product.current_stock || 0) <= (product.min_stock || 0);
+        } else if (stockFilter === 'out') {
+          matchesStock = (product.current_stock || 0) === 0;
+        } else if (stockFilter === 'normal') {
+          matchesStock = (product.current_stock || 0) > (product.min_stock || 0);
+        }
+        
+        return matchesSearch && matchesCategory && matchesStock;
+      })
+      .sort((a, b) => {
+        const aValue = a[sortField];
+        const bValue = b[sortField];
+        
+        if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+      });
+  }, [products, searchTerm, categoryFilter, stockFilter, sortField, sortDirection]);
 
-  // Pagination calculations
-  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
+  // Memoized pagination calculations
+  const totalPages = useMemo(() => Math.ceil(filteredProducts.length / itemsPerPage), [filteredProducts.length, itemsPerPage]);
+  const startIndex = useMemo(() => (currentPage - 1) * itemsPerPage, [currentPage, itemsPerPage]);
+  const endIndex = useMemo(() => startIndex + itemsPerPage, [startIndex, itemsPerPage]);
+  const paginatedProducts = useMemo(() => filteredProducts.slice(startIndex, endIndex), [filteredProducts, startIndex, endIndex]);
 
-  // Handle sorting
-  const handleSort = (field: keyof ProductWithCategory) => {
+  // Memoized event handlers
+  const handleSort = useCallback((field: keyof ProductWithCategory) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
       setSortField(field);
       setSortDirection('asc');
     }
-  };
+  }, [sortField, sortDirection]);
 
-  // Handle page change
-  const handlePageChange = (page: number) => {
+  const handlePageChange = useCallback((page: number) => {
     setCurrentPage(page);
-  };
+  }, []);
 
-  // Handle items per page change
-  const handleItemsPerPageChange = (value: string) => {
+  const handleItemsPerPageChange = useCallback((value: string) => {
     setItemsPerPage(Number(value));
     setCurrentPage(1);
-  };
+  }, []);
 
-  // Handle product selection
-  const handleSelectProduct = (productId: string) => {
+  const handleSelectProduct = useCallback((productId: string) => {
     setSelectedProducts(prev => 
       prev.includes(productId) 
         ? prev.filter(id => id !== productId)
         : [...prev, productId]
     );
-  };
+  }, []);
 
-  // Handle select all
-  const handleSelectAll = () => {
-    if (selectedProducts.length === paginatedProducts.length) {
-      setSelectedProducts([]);
-    } else {
-      setSelectedProducts(paginatedProducts.map(p => p.id));
-    }
-  };
+  const handleSelectAll = useCallback(() => {
+    setSelectedProducts(prev => {
+      const currentPageIds = paginatedProducts.map(p => p.id);
+      const allSelected = currentPageIds.length > 0 && currentPageIds.every(id => prev.includes(id));
+      if (allSelected) {
+        return prev.filter(id => !currentPageIds.includes(id));
+      } else {
+        return [...new Set([...prev, ...currentPageIds])];
+      }
+    });
+  }, [paginatedProducts]);
 
   // Handle bulk delete
   const handleBulkDelete = async () => {
@@ -259,12 +267,6 @@ export default function Products() {
       setProductToDelete(null);
     }
   };
-
-  // ใช้ข้อมูลจาก StockContext แทนการ fetch เอง
-  const stockContext = useStock();
-  const products = stockContext?.products || [];
-  const categories = stockContext?.categories || [];
-  const refreshData = stockContext?.refreshData;
 
   // Calculate stats
   const totalProducts = products.length;

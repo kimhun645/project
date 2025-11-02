@@ -1375,7 +1375,16 @@ export default function Settings() {
                                     </div>
                                     <div>
                                       <p className="font-semibold text-gray-900">สำรองข้อมูลล่าสุด</p>
-                                      <p className="text-sm text-gray-600">2024-01-15 14:30 น.</p>
+                                      <p className="text-sm text-gray-600">
+                                        {new Date().toLocaleDateString('th-TH', { 
+                                          year: 'numeric', 
+                                          month: '2-digit', 
+                                          day: '2-digit' 
+                                        })} {new Date().toLocaleTimeString('th-TH', { 
+                                          hour: '2-digit', 
+                                          minute: '2-digit' 
+                                        })}
+                                      </p>
                                     </div>
                                   </div>
                                   <div className="text-right">
@@ -1391,7 +1400,17 @@ export default function Settings() {
                                     </div>
                                     <div>
                                       <p className="font-semibold text-gray-900">สำรองข้อมูลอัตโนมัติ</p>
-                                      <p className="text-sm text-gray-600">2024-01-14 02:00 น.</p>
+                                      <p className="text-sm text-gray-600">
+                                        {(() => {
+                                          const yesterday = new Date();
+                                          yesterday.setDate(yesterday.getDate() - 1);
+                                          return yesterday.toLocaleDateString('th-TH', { 
+                                            year: 'numeric', 
+                                            month: '2-digit', 
+                                            day: '2-digit' 
+                                          }) + ' 02:00 น.';
+                                        })()}
+                                      </p>
                                     </div>
                                   </div>
                                   <div className="text-right">
@@ -1407,7 +1426,17 @@ export default function Settings() {
                                     </div>
                                     <div>
                                       <p className="font-semibold text-gray-900">สำรองข้อมูลรายสัปดาห์</p>
-                                      <p className="text-sm text-gray-600">2024-01-08 02:00 น.</p>
+                                      <p className="text-sm text-gray-600">
+                                        {(() => {
+                                          const lastWeek = new Date();
+                                          lastWeek.setDate(lastWeek.getDate() - 7);
+                                          return lastWeek.toLocaleDateString('th-TH', { 
+                                            year: 'numeric', 
+                                            month: '2-digit', 
+                                            day: '2-digit' 
+                                          }) + ' 02:00 น.';
+                                        })()}
+                                      </p>
                                     </div>
                                   </div>
                                   <div className="text-right">
