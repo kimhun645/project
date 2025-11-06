@@ -2096,6 +2096,10 @@ export class FirestoreService {
       const withdrawalRef = doc(db, 'withdrawals', withdrawalId);
       await deleteDoc(withdrawalRef);
       console.log('✅ Withdrawal deleted successfully:', withdrawalId);
+      
+      // Clear cache to ensure fresh data
+      this.cache.delete('withdrawals');
+      this.cache.delete('movements');
     } catch (error) {
       console.error('Error deleting withdrawal:', error);
       throw error;
@@ -2154,6 +2158,10 @@ export class FirestoreService {
       const receiptRef = doc(db, 'receipts', receiptId);
       await deleteDoc(receiptRef);
       console.log('✅ Receipt deleted successfully:', receiptId);
+      
+      // Clear cache to ensure fresh data
+      this.cache.delete('receipts');
+      this.cache.delete('movements');
     } catch (error) {
       console.error('Error deleting receipt:', error);
       throw error;

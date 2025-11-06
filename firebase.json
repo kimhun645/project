@@ -2,6 +2,8 @@
   "hosting": {
     "site": "stock-6e930",
     "public": "dist",
+    "cleanUrls": true,
+    "trailingSlash": false,
     "ignore": [
       "firebase.json",
       "**/.*",

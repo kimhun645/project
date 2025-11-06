@@ -226,10 +226,18 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
         w.items?.map(item => ({
           id: `${w.id}_${item.id}`,
           product_id: item.product_id,
+          product_name: item.product_name || '',
+          product_sku: item.product_sku || '',
+          sku: item.product_sku || '',
           type: 'out' as const,
           quantity: item.quantity,
           reason: `${w.purpose} - ${item.reason}`,
+          person_name: w.requester_name,
+          person_role: 'ผู้เบิก',
+          withdrawal_no: w.withdrawal_no,
+          withdrawal_date: w.withdrawal_date,
           created_at: w.created_at || w.withdrawal_date || new Date().toISOString(),
+          updated_at: w.created_at || w.withdrawal_date || new Date().toISOString(),
           created_by: w.requester_name || 'ไม่ระบุ'
         })) || []
       );
@@ -238,16 +246,31 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
         r.items?.map(item => ({
           id: `${r.id}_${item.id}`,
           product_id: item.product_id,
+          product_name: item.product_name || '',
+          product_sku: item.product_sku || '',
+          sku: item.product_sku || '',
           type: 'in' as const,
           quantity: item.quantity,
-          reason: `${r.notes} - ${item.supplier}`,
+          reason: `${r.notes || ''} - ${item.supplier || ''}`,
+          person_name: r.receiver_name,
+          person_role: 'ผู้รับ',
+          receipt_no: r.receipt_no,
+          receipt_date: r.receipt_date,
           created_at: r.created_at || r.receipt_date || new Date().toISOString(),
+          updated_at: r.created_at || r.receipt_date || new Date().toISOString(),
           created_by: r.receiver_name || 'ไม่ระบุ'
         })) || []
       );
 
+      // เพิ่ม product_sku ให้กับ movements ปกติ (ถ้ายังไม่มี)
+      const enrichedMovements = movements.map(m => ({
+        ...m,
+        product_sku: m.product_sku || m.sku || '',
+        sku: m.sku || m.product_sku || ''
+      }));
+
       const combinedMovements = [
-        ...movements,
+        ...enrichedMovements,
         ...withdrawalMovements,
         ...receiptMovements
       ];

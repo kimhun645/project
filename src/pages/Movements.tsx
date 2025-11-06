@@ -372,8 +372,8 @@ export default function Movements() {
             if (movement.withdrawal_no) {
               // Check if it's a withdrawal (type: 'out') or receipt (type: 'in')
               if (movement.type === 'out') {
-                // Extract withdrawal ID from the movement ID
-                const withdrawalId = String(id).split('-')[0];
+                // Extract withdrawal ID from the movement ID (format: withdrawalId_itemId)
+                const withdrawalId = String(id).split('_')[0];
                 await FirestoreService.deleteWithdrawal(withdrawalId);
                 
                 // Restore stock for withdrawal items
@@ -381,8 +381,8 @@ export default function Movements() {
                   current_stock: (await FirestoreService.getProduct(movement.product_id))?.current_stock + movement.quantity
                 });
               } else if (movement.type === 'in') {
-                // Extract receipt ID from the movement ID
-                const receiptId = String(id).split('-')[0];
+                // Extract receipt ID from the movement ID (format: receiptId_itemId)
+                const receiptId = String(id).split('_')[0];
                 await FirestoreService.deleteReceipt(receiptId);
                 
                 // Restore stock for receipt items (receipt was adding stock, so deletion should reduce it)
@@ -422,8 +422,8 @@ export default function Movements() {
           // Check if it's a withdrawal or receipt movement
           if (movementToDelete.withdrawal_no) {
             if (movementToDelete.type === 'out') {
-              // Extract withdrawal ID from the movement ID
-              const withdrawalId = String(movementToDelete.id).split('-')[0];
+              // Extract withdrawal ID from the movement ID (format: withdrawalId_itemId)
+              const withdrawalId = String(movementToDelete.id).split('_')[0];
               await FirestoreService.deleteWithdrawal(withdrawalId);
               
               // Restore stock for withdrawal items
@@ -431,8 +431,8 @@ export default function Movements() {
                 current_stock: (await FirestoreService.getProduct(movementToDelete.product_id))?.current_stock + movementToDelete.quantity
               });
             } else if (movementToDelete.type === 'in') {
-              // Extract receipt ID from the movement ID
-              const receiptId = String(movementToDelete.id).split('-')[0];
+              // Extract receipt ID from the movement ID (format: receiptId_itemId)
+              const receiptId = String(movementToDelete.id).split('_')[0];
               await FirestoreService.deleteReceipt(receiptId);
               
               // Restore stock for receipt items (receipt was adding stock, so deletion should reduce it)
